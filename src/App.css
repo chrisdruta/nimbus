@@ -1,0 +1,9 @@
+.App {
+  height: calc(100vh - 91px);
+  background-color: #181818;
+}
+
+.outerWrap {
+  height: 100vh;
+  min-height: 100%;
+}
