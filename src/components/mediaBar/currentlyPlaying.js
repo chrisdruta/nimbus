@@ -7,13 +7,13 @@ import { faHeart as faHeartOutline } from '@fortawesome/free-regular-svg-icons';
 function CurrentlyPlaying(props) {
     return (
         <div className="currently-playing">
-            <img className="small-album" src="https://i1.sndcdn.com/artworks-000221803133-etx99p-t50x50.jpg"/>
+            <img className="small-album" src="https://i1.sndcdn.com/artworks-000331668405-44vvt1-t500x500.jpg" />
             <div style={{display: "flex", flexDirection: "column", justifyContent: "space-evenly", height: "60%", alignSelf: "center"}}>
                 <span className="current-song-title">
-                    Hong Kong 2046
+                    ＷＥＥＤ ＷＩＺＡＲＤ
                 </span>
                 <span className="current-song-author">
-                    Hong Kong Express
+                    spookydaghost
                 </span>
             </div>
             <FontAwesomeIcon icon={faHeartOutline} size="1x" className="playback-button" style={{paddingLeft: "20px"}}/>
