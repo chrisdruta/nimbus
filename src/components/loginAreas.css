@@ -1,0 +1,91 @@
+.nimbus {
+    color: #ff4200;
+    text-align: center;
+    padding: 15px;
+    font-family: 'Comfortaa', cursive;
+    font-size: 50px;
+    cursor: default;
+    user-select: none;
+}
+
+.logged-out-container {
+    display: flex;
+    flex-direction: column;
+    min-height: 100px;
+    justify-content: space-evenly;
+}
+
+.logged-in-container {
+    display: flex;
+    flex-direction: row;
+    min-height: 100px;
+    padding-left: 5px;
+    padding-right: 5px;
+}
+
+.profile-link-input, input[type=text] {
+    background-color: #282828;
+    width: 90%;
+    align-self: center;
+    border-radius: 10px;
+    box-sizing: border-box;
+    padding: 5px 10px 5px 10px;
+    font-size: x-small;
+}
+
+.profile-link-input, input[type=text] {
+    background-color: #282828;
+    width: 90%;
+    align-self: center;
+    border-radius: 10px;
+    box-sizing: border-box;
+    padding: 5px 10px 5px 10px;
+    font-size: x-small;
+}
+
+.profile-link-input-label {
+    color: white;
+    cursor: default;
+    user-select: none;
+    text-align: center;
+    padding: 5px;
+}
+
+.sc-connect {
+    width: 70%;
+    align-self: center;
+    padding: 5px;
+}
+
+.sc-connect:hover {
+    width: 70%;
+    cursor: pointer;
+}
+
+.sc-disconnect {
+    width: 80%;
+}
+
+.sc-disconnect:hover {
+    cursor: pointer;
+}
+
+.sc-user-profile-pic {
+    width: 75px;
+    height: 75px;
+    border-radius: 50%;
+    align-self: center;
+    padding: 10px;
+}
+
+.sc-logout-stack {
+    display: flex;
+    width: 100%;
+    flex-direction: column;
+    justify-content: space-evenly;
+    padding: 20px;
+}
+
+.sc-username {
+    color: #b3b3b3;
+}
