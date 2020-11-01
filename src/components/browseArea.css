@@ -1,0 +1,100 @@
+::-webkit-scrollbar {
+    width: 12px;
+    background-color: #181818;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #535353;
+    border-radius: 0;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    color: #b3b3b3;
+    border-radius: 0;
+}
+
+.browse-area {
+    height: 100%;
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    overflow-y: auto;
+    overflow-x: hidden;
+    justify-content: space-evenly;
+    margin: 10px 0px 10px 0px;
+}
+
+.browse-area-header {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-evenly;
+    align-items: center;
+    transition: background-color 1s;
+}
+
+.browse-area-title {
+    color: white;
+    padding: 5px;
+    font-weight: 500;
+    font-size: larger;
+    cursor: default;
+    user-select: none;
+}
+
+.browse-loading {
+    margin: auto;
+}
+
+.browse-art {
+    width: 100px;
+    padding: 5px;
+    user-select: none;
+}
+
+.tile {
+    width: 175px;
+    height: 175px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-evenly;
+    padding: 5px;
+    position: relative;
+}
+
+.tile-art {
+    width: 100%;
+    height: 100%;
+}
+
+.tile-title, .tile-author {
+    background-color: black;
+    opacity: 80%;
+    color: white;
+    display: inline-block;
+    width: fit-content;
+    max-width: 80%;
+    padding: 3px;
+
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.tile-title {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+
+    font-size: smaller;
+    font-weight: 500;
+}
+
+.tile-author {
+    position: absolute;
+    top: 40px;
+    left: 10px;
+
+    font-size: small;
+}

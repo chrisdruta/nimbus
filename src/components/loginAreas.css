@@ -1,7 +1,7 @@
 .nimbus {
     color: #ff4200;
     text-align: center;
-    padding: 15px;
+    padding: 5px;
     font-family: 'Comfortaa', cursive;
     font-size: 50px;
     cursor: default;
@@ -11,19 +11,19 @@
 .logged-out-container {
     display: flex;
     flex-direction: column;
-    min-height: 100px;
+    min-height: 120px;
     justify-content: space-evenly;
 }
 
 .logged-in-container {
     display: flex;
     flex-direction: row;
-    min-height: 100px;
+    min-height: 120px;
     padding-left: 5px;
     padding-right: 5px;
 }
 
-.profile-link-input, input[type=text] {
+.profile-link-input > input[type=text] {
     background-color: #282828;
     width: 90%;
     align-self: center;
@@ -41,6 +41,7 @@
     box-sizing: border-box;
     padding: 5px 10px 5px 10px;
     font-size: x-small;
+    border:none;
 }
 
 .profile-link-input-label {
@@ -54,6 +55,7 @@
 .sc-connect {
     width: 70%;
     align-self: center;
+    text-align: center;
     padding: 5px;
 }
 
@@ -88,4 +90,5 @@
 
 .sc-username {
     color: #b3b3b3;
+    font-size: large;
 }

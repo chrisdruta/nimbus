@@ -1,6 +1,7 @@
 import { useReducer, useEffect } from 'react';
 
 import SideNav from './components/nav';
+import BrowseArea from './components/browseArea';
 import MediaBar from './components/mediaBar/mediaBar';
 import { initialState, reducer, Context} from './store';
 
@@ -41,13 +42,11 @@ function App() {
   return (
     <Context.Provider value={{ store, dispatch }}>
       <div className="App">
-        <div style={{display: "flex", height: "100%"}}>
+        <div style={{ display: "flex", height: "100%", width: "100%" }}>
           <SideNav />
-          <span style={{color: "white", padding: "100px"}}>
-            {store.playing.toString()}
-          </span>
+          <BrowseArea />
         </div>
-        <MediaBar dispatch={dispatch}/>
+        <MediaBar />
       </div>
     </Context.Provider>
   );
