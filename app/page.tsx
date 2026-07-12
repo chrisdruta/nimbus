@@ -1,59 +1,32 @@
+import { redirect } from "next/navigation";
 import { readSession } from "@/lib/session";
-import Player from "@/components/Player";
 
-export default async function Home() {
+export default async function Landing() {
   const session = await readSession();
+  if (session) redirect("/library");
 
   return (
-    <main style={{ padding: "2rem 1rem" }}>
-      <header
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "baseline",
-          maxWidth: 640,
-          margin: "0 auto 1rem",
-        }}
-      >
-        <h1 style={{ fontFamily: "var(--font-logo)", color: "var(--accent)" }}>
-          nimbus
-        </h1>
-        {session && (
-          <form action="/api/auth/logout" method="post">
-            <button
-              style={{
-                background: "none",
-                border: "1px solid var(--bg-elem)",
-                color: "var(--text-secondary)",
-                borderRadius: 4,
-                padding: "0.3rem 0.8rem",
-                cursor: "pointer",
-              }}
-            >
-              log out
-            </button>
-          </form>
-        )}
-      </header>
+    <main className="flex min-h-dvh flex-col items-center justify-center gap-8 px-6">
+      <div className="text-center">
+        <h1 className="font-logo text-6xl text-accent">nimbus</h1>
+        <p className="mt-3 text-muted">shuffle that actually works</p>
+      </div>
 
-      {session ? (
-        <Player />
-      ) : (
-        <div style={{ textAlign: "center", marginTop: "4rem" }}>
-          <a
-            href="/api/auth/login"
-            style={{
-              background: "var(--accent)",
-              color: "#fff",
-              borderRadius: 24,
-              padding: "0.75rem 1.5rem",
-              textDecoration: "none",
-            }}
-          >
-            Sign in with SoundCloud
-          </a>
-        </div>
-      )}
+      <a
+        href="/api/auth/login"
+        className="rounded-full bg-accent px-8 py-3 font-medium text-white transition hover:scale-105 hover:bg-[#ff5c1f]"
+      >
+        Continue with SoundCloud
+      </a>
+
+      <a
+        href="https://soundcloud.com"
+        target="_blank"
+        rel="noreferrer"
+        className="text-xs tracking-wide text-muted transition hover:text-white"
+      >
+        powered by SoundCloud
+      </a>
     </main>
   );
 }
