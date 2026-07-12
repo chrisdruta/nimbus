@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Thin wrapper: the real launcher lives in the harness submodule.
+set -euo pipefail
+
+here="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+if [[ ! -x "$here/harness/dev" ]]; then
+  echo "Harness submodule is missing or empty." >&2
+  echo "Run: git submodule update --init" >&2
+  exit 1
+fi
+
+exec "$here/harness/dev" "$@"

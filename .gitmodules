@@ -1,0 +1,4 @@
+[submodule ".devcontainer/harness"]
+	path = .devcontainer/harness
+	url = git@github.com:chrisdruta/vibe-devcontainer-submodule.git
+	branch = main

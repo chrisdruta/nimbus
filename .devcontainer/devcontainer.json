@@ -1,0 +1,44 @@
+{
+  "name": "Bun Agent Dev",
+  "build": {
+    "dockerfile": "harness/Dockerfile",
+    "context": "harness",
+    "args": {
+      "BASE_IMAGE": "mcr.microsoft.com/devcontainers/base:debian",
+      "INSTALL_CLAUDE_CODE": "true",
+      "INSTALL_CODEX": "false",
+      "INSTALL_GROK": "false",
+      "INSTALL_NODE": "false",
+      "INSTALL_BUN": "true",
+      "INSTALL_ROKIT": "false"
+    }
+  },
+  "containerUser": "vscode",
+  "remoteUser": "vscode",
+  "updateRemoteUserUID": true,
+  "init": true,
+  "mounts": [
+    "source=agent-state-${localWorkspaceFolderBasename},target=/home/vscode/.agents,type=volume"
+  ],
+  "containerEnv": {
+    "CLAUDE_CONFIG_DIR": "/home/vscode/.agents/claude",
+    "CODEX_HOME": "/home/vscode/.agents/codex",
+    "DISABLE_AUTOUPDATER": "1"
+  },
+  "remoteEnv": {
+    "GH_TOKEN": "${localEnv:GH_TOKEN}"
+  },
+  "postCreateCommand": "bash .devcontainer/harness/scripts/post-create.sh",
+  "postStartCommand": "bash .devcontainer/harness/scripts/post-start.sh",
+  "runArgs": [
+    "--cap-drop=ALL",
+    "--security-opt=no-new-privileges"
+  ],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "anthropic.claude-code", "biomejs.biome"
+      ]
+    }
+  }
+}
