@@ -58,20 +58,20 @@ replacing them must never take more than editing env vars.
 
 ## Validation checklist
 
-- [ ] Sign in via SoundCloud; confirm in devtools that no client secret,
+- [x] Sign in via SoundCloud; confirm in devtools that no client secret,
       code verifier, or token ever reaches the browser (only two cookies).
-- [ ] `users` row holds opaque `iv.ct.tag` blobs; `/api/me` still works
+- [x] `users` row holds opaque `iv.ct.tag` blobs; `/api/me` still works
       after a server restart.
-- [ ] Likes render; clicking a track plays audio fetched straight from
+- [x] Likes render; clicking a track plays audio fetched straight from
       `*.sndcdn.com` (check the Network tab — never the app origin).
-- [ ] Visualizer badge: record `CORS OK` or the exact failure mode, plus
+- [x] Visualizer badge: record `CORS OK` or the exact failure mode, plus
       the stream protocol (progressive vs HLS). **If CORS fails, that is a
       valid spike result — write it down here and stop; no proxy hacks.**
-- [ ] Let a track end: the next one auto-plays; bars keep moving.
-- [ ] `curl -X POST localhost:3000/api/debug/refresh -b <session cookie>`
+- [x] Let a track end: the next one auto-plays; bars keep moving.
+- [x] `curl -X POST localhost:3000/api/debug/refresh -b <session cookie>`
       twice sequentially (rotation persists), then twice concurrently
       (row lock serializes); `/api/likes` still works afterwards.
-- [ ] A second SoundCloud account gets 403 and no `users` row.
+- [x] A second SoundCloud account gets 403 and no `users` row.
 
 ## Spike results (2026-07-12)
 
