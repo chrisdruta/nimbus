@@ -35,13 +35,23 @@ export interface UserRow {
   access_expires_at: Date;
 }
 
+// Postgres bigint arrives as a string; both ids fit in a JS number.
+function toUserRow(row: Record<string, unknown>): UserRow {
+  return {
+    ...(row as unknown as UserRow),
+    id: Number(row.id),
+    sc_user_id: Number(row.sc_user_id),
+    access_expires_at: new Date(row.access_expires_at as string | Date),
+  };
+}
+
 export async function getUserById(id: number): Promise<UserRow | null> {
   const rows = await sql()`
     SELECT id, sc_user_id, sc_permalink, access_token_enc, refresh_token_enc,
            access_expires_at
     FROM users WHERE id = ${id}
   `;
-  return (rows[0] as UserRow | undefined) ?? null;
+  return rows[0] ? toUserRow(rows[0]) : null;
 }
 
 export async function upsertUser(fields: {
@@ -65,5 +75,5 @@ export async function upsertUser(fields: {
     RETURNING id, sc_user_id, sc_permalink, access_token_enc,
               refresh_token_enc, access_expires_at
   `;
-  return rows[0] as UserRow;
+  return toUserRow(rows[0]);
 }
