@@ -73,14 +73,28 @@ replacing them must never take more than editing env vars.
       (row lock serializes); `/api/likes` still works afterwards.
 - [ ] A second SoundCloud account gets 403 and no `users` row.
 
-## Spike results
+## Spike results (2026-07-12)
 
-_To be filled in after the validation run:_
-
-- CORS verdict: _pending_
-- Stream protocol seen: _pending_
-- Auth header form (`OAuth` vs `Bearer`): _pending_
-- Notes on refresh rotation: _pending_
+- **CORS verdict: OK** — `AnalyserNode` sees real frequency data. One
+  wrinkle: the `/tracks/:id/streams` variant URLs live on
+  `api.soundcloud.com` and demand the OAuth header (a bare `<audio>`
+  element gets 401, which masquerades as a CORS load failure). The backend
+  now follows the authorized 302 server-side and returns the final signed
+  `cf-media.sndcdn.com` URL — that host serves `Access-Control-Allow-Origin: *`,
+  `audio/mpeg`, and honors Range requests, so `crossorigin="anonymous"` +
+  `MediaElementSource` works. Audio still flows browser → CDN directly.
+- **Stream protocol**: progressive MP3 (`http_mp3_128_url`) available on
+  tested tracks; HLS variants also offered (`hls_mp3_128_url`,
+  `hls_aac_160_url`). Signed CDN URLs use CloudFront query auth
+  (`Policy`/`Signature`/`Key-Pair-Id`) — resolve fresh per play.
+- **Auth header form**: `Authorization: OAuth <token>` works against
+  `api.soundcloud.com` (Bearer fallback never needed).
+- **Refresh rotation**: forced sequential rotations persist correctly;
+  two concurrent forced refreshes serialize under the row lock and both
+  succeed; API calls keep working afterward. Tokens at rest are opaque
+  AES-256-GCM blobs.
+- **Owner gate**: unapproved sign-in gets 403, no row created, and the
+  numeric id is logged (used to bootstrap `OWNER_SC_USER_ID`).
 
 ## Development
 
