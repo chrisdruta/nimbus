@@ -1,6 +1,12 @@
 import type { MusicProvider } from "../provider";
 import { authorizeUrl, exchangeCode, refresh } from "./auth";
-import { getLikesPage, getMe, resolveStream } from "./api";
+import {
+  getLikesPage,
+  getMe,
+  getPlaylists,
+  getPlaylistTracks,
+  resolveStream,
+} from "./api";
 
 export const soundcloudProvider: MusicProvider = {
   authorizeUrl,
@@ -8,5 +14,7 @@ export const soundcloudProvider: MusicProvider = {
   refresh,
   getMe,
   getLikesPage,
+  getPlaylists,
+  getPlaylistTracks,
   resolveStream,
 };

@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
   const cursor = req.nextUrl.searchParams.get("cursor") ?? undefined;
   return withUser(async (session) => {
     const { accessToken } = await getValidAccessToken(session.userId);
-    const page = await getProvider().getLikesPage(accessToken, cursor);
-    return { tracks: page.items, nextCursor: page.nextCursor };
+    const page = await getProvider().getPlaylists(accessToken, cursor);
+    return { playlists: page.items, nextCursor: page.nextCursor };
   });
 }
