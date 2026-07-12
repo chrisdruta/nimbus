@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { getUserAuth } from "./db";
 
 const SESSION_COOKIE = "nimbus_session";
 const DANCE_COOKIE = "nimbus_oauth";
@@ -11,13 +12,17 @@ export interface Session {
   scUserId: number;
 }
 
-/** Carries PKCE state across the OAuth redirect round-trip. */
+/** Carries PKCE state (and any invite code) across the OAuth round-trip. */
 export interface OauthDance {
   state: string;
   codeVerifier: string;
+  invite?: string;
 }
 
 export class UnauthorizedError extends Error {}
+
+/** Authenticated but not allowed: disabled account or non-admin. */
+export class ForbiddenError extends Error {}
 
 function secret(): Uint8Array {
   const raw = process.env.SESSION_SECRET;
@@ -100,7 +105,11 @@ export async function readAndClearDanceCookie(): Promise<OauthDance | null> {
   ) {
     return null;
   }
-  return { state: payload.state, codeVerifier: payload.codeVerifier };
+  return {
+    state: payload.state,
+    codeVerifier: payload.codeVerifier,
+    invite: typeof payload.invite === "string" ? payload.invite : undefined,
+  };
 }
 
 export function isOwner(scUserId: number): boolean {
@@ -108,12 +117,23 @@ export function isOwner(scUserId: number): boolean {
   return owner !== undefined && owner !== "" && Number(owner) === scUserId;
 }
 
-/** Session + owner gate for every protected route. Throws UnauthorizedError. */
+/**
+ * Session + membership gate for every protected route. DB-backed so that
+ * disabling or removing a user cuts them off on their next request despite
+ * the 7-day session JWT.
+ */
 export async function requireUser(): Promise<Session> {
   const session = await readSession();
   if (!session) throw new UnauthorizedError("no session");
-  if (!isOwner(session.scUserId)) {
-    throw new UnauthorizedError("not an approved user");
-  }
+  const membership = await getUserAuth(session.userId);
+  if (!membership) throw new UnauthorizedError("user removed");
+  if (membership.disabled) throw new ForbiddenError("account disabled");
+  return session;
+}
+
+/** Membership + owner gate for admin routes. */
+export async function requireAdmin(): Promise<Session> {
+  const session = await requireUser();
+  if (!isOwner(session.scUserId)) throw new ForbiddenError("not the owner");
   return session;
 }

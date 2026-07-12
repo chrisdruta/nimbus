@@ -12,6 +12,7 @@ import {
   type RefObject,
 } from "react";
 import type { ProviderTrack } from "@/lib/provider";
+import { formatReset } from "@/lib/format";
 import {
   createQueue,
   currentTrackId,
@@ -196,8 +197,26 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (!res.ok) {
         const meta = metaRef.current.get(trackId);
         const label = meta ? `"${meta.title}"` : `track ${trackId}`;
-        if (res.status === 401) {
-          toast("session expired — sign in again", "error");
+        if (res.status === 401 || res.status === 403) {
+          toast(
+            res.status === 401
+              ? "session expired — sign in again"
+              : "your account is disabled",
+            "error",
+          );
+          setPlaying(false);
+          return;
+        }
+        if (res.status === 429) {
+          // Quota exhausted — pause where we are. Skipping would spam the
+          // API and wrongly mark playable tracks unplayable.
+          const q = (await res.json()) as { scope: string; resetsAt: string };
+          toast(
+            q.scope === "user"
+              ? `daily play limit reached — resets ${formatReset(q.resetsAt)}`
+              : `nimbus hit its daily stream budget — resets ${formatReset(q.resetsAt)}`,
+            "error",
+          );
           setPlaying(false);
           return;
         }

@@ -10,6 +10,7 @@ interface Me {
   username: string;
   permalinkUrl: string;
   avatarUrl: string | null;
+  isOwner: boolean;
 }
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
@@ -86,6 +87,19 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         >
           Liked Tracks
         </Link>
+        {me?.isOwner && (
+          <Link
+            href="/admin"
+            onClick={onNavigate}
+            className={`-mx-2 block rounded px-2 py-1.5 text-sm transition ${
+              pathname === "/admin"
+                ? "border-l-2 border-accent bg-white/5 text-white"
+                : "text-muted hover:text-white"
+            }`}
+          >
+            Admin
+          </Link>
+        )}
       </div>
 
       <SidebarPlaylists onNavigate={onNavigate} />

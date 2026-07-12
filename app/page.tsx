@@ -1,9 +1,21 @@
 import { redirect } from "next/navigation";
 import { readSession } from "@/lib/session";
 
-export default async function Landing() {
+const AUTH_ERRORS: Record<string, string> = {
+  not_invited: "nimbus is invite-only — ask Chris for an invite link",
+  invite_invalid: "that invite is no longer valid — ask for a fresh link",
+  disabled: "this account has been disabled",
+};
+
+export default async function Landing({
+  searchParams,
+}: {
+  searchParams: Promise<{ auth_error?: string }>;
+}) {
   const session = await readSession();
   if (session) redirect("/library");
+  const { auth_error } = await searchParams;
+  const errorMessage = auth_error ? AUTH_ERRORS[auth_error] : undefined;
 
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center gap-8 px-6">
@@ -11,6 +23,12 @@ export default async function Landing() {
         <h1 className="font-logo text-6xl text-accent">nimbus</h1>
         <p className="mt-3 text-muted">shuffle that actually works</p>
       </div>
+
+      {errorMessage && (
+        <p className="rounded-lg bg-elem px-4 py-2 text-sm text-muted">
+          {errorMessage}
+        </p>
+      )}
 
       <a
         href="/api/auth/login"

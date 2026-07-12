@@ -2,6 +2,8 @@ import { type NextRequest } from "next/server";
 import { getProvider } from "@/lib/provider";
 import { getValidAccessToken } from "@/lib/tokens";
 import { withUser } from "@/lib/route-helpers";
+import { consumePlayStart, refundPlayStart, utcDayKey } from "@/lib/quota";
+import { isOwner } from "@/lib/session";
 
 export const runtime = "nodejs";
 
@@ -13,9 +15,20 @@ export async function GET(
   return withUser(async (session) => {
     const trackId = Number(id);
     if (!Number.isInteger(trackId)) throw new Error(`bad track id: ${id}`);
-    const { accessToken } = await getValidAccessToken(session.userId);
-    // JSON with a short-lived CDN URL — the audio itself never crosses
-    // this backend.
-    return getProvider().resolveStream(accessToken, trackId);
+
+    // Count the start before touching SoundCloud so an over-cap user never
+    // consumes the real client-id budget; give it back if resolution fails.
+    const day = utcDayKey();
+    await consumePlayStart(session.userId, isOwner(session.scUserId));
+
+    try {
+      const { accessToken } = await getValidAccessToken(session.userId);
+      // JSON with a short-lived CDN URL — the audio itself never crosses
+      // this backend.
+      return await getProvider().resolveStream(accessToken, trackId);
+    } catch (err) {
+      await refundPlayStart(session.userId, day).catch(() => {});
+      throw err;
+    }
   });
 }

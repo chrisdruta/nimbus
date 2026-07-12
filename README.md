@@ -8,6 +8,22 @@ Powered by the official [SoundCloud API](https://developers.soundcloud.com/)
 — nimbus is a free, personal, non-commercial project. Tracks always credit
 and link back to their creator and SoundCloud.
 
+## What it does (Milestone 3)
+
+- Invite-only membership: the owner mints single-use invite links (valid
+  7 days, revocable) from the admin page; a friend opens the link, signs
+  in with SoundCloud, and is a member from then on — no allowlist edits,
+  no env changes.
+- Stream-start quotas: every play resolution counts against a per-user
+  daily limit (default 150) and a global daily cap (default 12,000 —
+  headroom under SoundCloud's 15,000/day per client id). Counters live
+  in Postgres, reset at UTC midnight, and come back as friendly 429s the
+  player surfaces as a toast (never a skip). The owner bypasses the
+  per-user limit but not the global one.
+- Admin page (`/admin`, owner only): global usage gauge, both limits
+  editable live, invite management, and a user list with today's plays
+  plus disable/remove — disabling cuts access on the very next request.
+
 ## What it does (Milestone 2)
 
 - Sign in with SoundCloud (OAuth 2.1 + PKCE; tokens AES-256-GCM encrypted
@@ -22,7 +38,8 @@ and link back to their creator and SoundCloud.
 - Live Web Audio visualizer (mini in the bar + fullscreen), fed by one
   persistent analyzed audio element streaming **directly from the
   SoundCloud CDN** — the backend only brokers JSON, never audio.
-- Single-owner gate (`OWNER_SC_USER_ID`) until the invite system exists.
+- Single-owner gate (`OWNER_SC_USER_ID`) — superseded by invites in M3;
+  the env var now identifies the owner/admin account.
 
 ## Stack
 
@@ -46,7 +63,8 @@ Everything builds and tests without credentials. To run it for real:
    If the console refuses plain-http localhost, use a `cloudflared` tunnel
    and set `APP_URL` to the tunnel origin instead.
 2. **Create a Neon project** (free tier) and apply the schema:
-   `psql "$DATABASE_URL" -f db/schema.sql`.
+   `psql "$DATABASE_URL" -f db/schema.sql`. The file is idempotent —
+   re-apply it after pulling schema changes.
 3. **Configure env**: `cp .env.example .env.local` and fill it in
    (`TOKEN_ENCRYPTION_KEY` and `SESSION_SECRET` via `openssl rand -base64 32`).
    Leave `OWNER_SC_USER_ID` empty for your first login attempt — the
@@ -73,6 +91,24 @@ replacing them must never take more than editing env vars.
       twice sequentially (rotation persists), then twice concurrently
       (row lock serializes); `/api/likes` still works afterwards.
 - [x] A second SoundCloud account gets 403 and no `users` row.
+
+## Milestone 3 validation (2026-07-12)
+
+- [x] `db/schema.sql` applies idempotently (twice) over live M2 data.
+- [x] Invite lifecycle: create → landing page offers sign-in; revoke →
+      page shows "no longer valid", second revoke 400s. Two concurrent
+      claims of one code: exactly one wins, the invite records `used_by`.
+- [x] Quotas: user at limit gets 429 `scope:"user"`; global at limit
+      blocks everyone including the owner with `scope:"global"`; both
+      carry `used`/`limit`/`resetsAt` and a `Retry-After` header. Owner
+      bypasses only the per-user cap. Failed resolutions refund the
+      counter. Successful plays increment the admin gauge.
+- [x] Membership: disabled user's next API call 403s and the shell
+      redirects to `/`; re-enabling restores access without re-login;
+      a removed user 401s and needs a fresh invite. The owner account
+      rejects disable/remove with 400. Non-owner `/api/admin/*` → 403.
+- [ ] End-to-end invite sign-in with a second SoundCloud account
+      (requires the production redirect URI — validate after deploy).
 
 ## Spike results (2026-07-12)
 
@@ -108,8 +144,6 @@ bun test           # unit tests (tests/)
 
 ## What's next
 
-Milestone 3: invite/allowlist system, per-user and global stream-start
-quotas (SoundCloud caps 15,000 starts/day per client id), admin controls.
 Milestone 4: a real visualization system and richer shuffle modes
 (artist spacing, rediscovery). Later: feed/reposts/related-track
 continuation and a Tauri client on this same backend. SoundCloud stays
