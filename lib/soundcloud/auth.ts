@@ -1,4 +1,3 @@
-import { createHash, randomBytes } from "node:crypto";
 import type { ProviderTokens } from "../provider";
 
 const AUTHORIZE_URL = "https://secure.soundcloud.com/authorize";
@@ -12,16 +11,6 @@ function env(name: string): string {
 
 export function redirectUri(): string {
   return `${env("APP_URL")}/api/auth/callback`;
-}
-
-export function generatePkce(): { verifier: string; challenge: string } {
-  const verifier = randomBytes(64).toString("base64url");
-  const challenge = createHash("sha256").update(verifier).digest("base64url");
-  return { verifier, challenge };
-}
-
-export function generateState(): string {
-  return randomBytes(32).toString("base64url");
 }
 
 export function authorizeUrl(params: {
