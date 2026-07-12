@@ -6,9 +6,9 @@
     "args": {
       "BASE_IMAGE": "mcr.microsoft.com/devcontainers/base:debian",
       "INSTALL_CLAUDE_CODE": "true",
-      "INSTALL_CODEX": "false",
-      "INSTALL_GROK": "false",
-      "INSTALL_NODE": "false",
+      "INSTALL_CODEX": "true",
+      "INSTALL_GROK": "true",
+      "INSTALL_NODE": "true",
       "INSTALL_BUN": "true",
       "INSTALL_ROKIT": "false"
     }
