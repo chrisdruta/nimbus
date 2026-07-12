@@ -13,6 +13,11 @@
       "INSTALL_ROKIT": "false"
     }
   },
+  "appPort": [3000],
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": { "label": "nimbus dev", "onAutoForward": "notify" }
+  },
   "containerUser": "vscode",
   "remoteUser": "vscode",
   "updateRemoteUserUID": true,
