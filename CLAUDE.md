@@ -17,8 +17,8 @@ psql "$DATABASE_URL" -f db/schema.sql   # apply schema (idempotent — safe to r
 
 Secrets live in `.env` (gitignored; see `.env.example`). The dev server must be
 launched with the env sourced: `set -a && . ./.env && set +a && bun run dev`.
-Everything builds and tests without credentials. `legacy/` is the archived 2020
-CRA app — reference only, never touch it.
+Everything builds and tests without credentials. (The 2020 CRA predecessor was
+removed from the tree; it lives in git history before the M4 cleanup.)
 
 ## Architecture
 
@@ -106,8 +106,9 @@ real data.
 - Free, personal, non-commercial; invite-only at friends scale. Tracks always
   credit and link back to their creator and SoundCloud.
 - Credentials are env-vars only and must stay trivially replaceable — assume
-  they can be revoked at any time. Never reuse the borrowed client id in
-  `legacy/`.
+  they can be revoked at any time. Only ever use credentials Chris registered
+  himself (never a borrowed/scraped client id, including the one in the old
+  CRA app in git history).
 - The SoundCloud app console holds exactly ONE redirect URI (production).
   Local dev reuses the owner's Neon-stored tokens plus a minted session
   instead of re-running OAuth.

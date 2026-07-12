@@ -4,8 +4,8 @@ Unofficial lightweight SoundCloud client that feels like Spotify, with
 𝚊𝚎𝚜𝚝𝚑𝚎𝚝𝚒𝚌 features for an 𝚊𝚎𝚜𝚝𝚑𝚎𝚝𝚒𝚌 listening experience.
 
 Shuffle that actually works, a locally controlled queue, and reactive
-visualizations. The 2020 Create React App lives on in
-[`legacy/`](legacy/); this is its Next.js revival.
+visualizations. A Next.js revival of a 2020 Create React App (retired
+from the tree; it survives in git history).
 
 Powered by the official [SoundCloud API](https://developers.soundcloud.com/)
 — nimbus is a free, personal, invite-only, non-commercial project. Tracks
