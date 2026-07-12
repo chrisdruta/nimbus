@@ -86,13 +86,36 @@ export async function resolveStream(
     `/tracks/${trackId}/streams`,
     accessToken,
   )) as ScStreams;
+  let picked: ProviderStream;
   if (streams.http_mp3_128_url) {
-    return { url: streams.http_mp3_128_url, protocol: "progressive" };
+    picked = { url: streams.http_mp3_128_url, protocol: "progressive" };
+  } else if (streams.hls_mp3_128_url ?? streams.hls_opus_64_url) {
+    picked = {
+      url: (streams.hls_mp3_128_url ?? streams.hls_opus_64_url)!,
+      protocol: "hls",
+    };
+  } else if (streams.preview_mp3_128_url) {
+    picked = { url: streams.preview_mp3_128_url, protocol: "progressive" };
+  } else {
+    throw new Error(`no playable stream for track ${trackId}`);
   }
-  const hls = streams.hls_mp3_128_url ?? streams.hls_opus_64_url;
-  if (hls) return { url: hls, protocol: "hls" };
-  if (streams.preview_mp3_128_url) {
-    return { url: streams.preview_mp3_128_url, protocol: "progressive" };
+
+  // The variant URL lives on api.soundcloud.com and demands the OAuth header,
+  // which a media element can't send. Follow the authorized 302 here and hand
+  // the browser the final signed CDN URL (CORS-enabled, auth in the query
+  // signature) — the audio itself still flows browser -> CDN directly.
+  const res = await fetch(picked.url, {
+    redirect: "manual",
+    headers: { Authorization: `OAuth ${accessToken}` },
+  });
+  void res.body?.cancel();
+  const location = res.headers.get("location");
+  if (res.status >= 300 && res.status < 400 && location) {
+    return {
+      url: new URL(location, picked.url).toString(),
+      protocol: picked.protocol,
+    };
   }
-  throw new Error(`no playable stream for track ${trackId}`);
+  if (res.ok) return picked; // already directly fetchable
+  throw new Error(`stream redirect resolution failed: ${res.status}`);
 }
