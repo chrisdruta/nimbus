@@ -91,6 +91,11 @@ in `app/globals.css` (`--color-accent` #ff4200 etc.); lowercase, understated
 chrome is the house style. localStorage uses versioned/validated payloads
 (`lib/queue.ts` persistence, `lib/prefs.ts`) with backfill for missing fields.
 
+**Feature tracking.** `docs/ROADMAP.md` is the living tracker: planned work
+under "Next / ideas", shipped milestones with dates and validation records
+under "Shipped". Update it when a milestone ships; keep the README a clean
+front page (features in present tense, no per-milestone history).
+
 **Schema changes.** `db/schema.sql` is an idempotent desired-state file
 (`IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS` / `ON CONFLICT DO NOTHING`) —
 extend it additively; verify it applies cleanly twice against a DB holding
