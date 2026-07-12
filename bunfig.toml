@@ -1,0 +1,3 @@
+[test]
+# Keep bun test away from legacy/src/App.test.js (dead CRA test).
+root = "tests"
