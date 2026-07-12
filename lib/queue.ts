@@ -5,6 +5,23 @@
 
 export type RepeatMode = "off" | "all" | "one";
 
+export type ShuffleMode = "classic" | "artist-spaced" | "rediscovery";
+
+/**
+ * External knowledge the pure engine can't hold — injected by the caller.
+ * Every mode degrades gracefully when fields are missing.
+ */
+export interface ShuffleContext {
+  /** Artist display name for a track (from the player's metadata cache). */
+  artistOf?: (id: number) => string | undefined;
+  /** Play tally for a track; undefined = never played. */
+  playsOf?: (
+    id: number,
+  ) => { playCount: number; lastPlayedAt: number } | undefined;
+  /** Injectable clock (ms epoch) for deterministic tests. */
+  now?: number;
+}
+
 /** Minimal snapshot of the current track so the media bar can paint
  * immediately on reload, before the collection refetches. */
 export interface QueueTrack {
@@ -27,6 +44,8 @@ export interface QueueState {
   /** Index into order; -1 = nothing selected yet. */
   position: number;
   shuffled: boolean;
+  /** Which shuffle algorithm orders the queue (kept across off/on). */
+  shuffleMode: ShuffleMode;
   /** Seed the current shuffle was derived from (for reproducibility). */
   seed: number;
   repeat: RepeatMode;
@@ -66,28 +85,148 @@ export function randomSeed(): number {
   return Math.floor(Math.random() * 2 ** 31);
 }
 
+/** Move `first` to index 0 without disturbing the relative rest. */
+function pinFirst(order: number[], first: number | undefined): number[] {
+  if (first === undefined || order[0] === first || !order.includes(first)) {
+    return order;
+  }
+  return [first, ...order.filter((id) => id !== first)];
+}
+
+/**
+ * Post-shuffle repair pass: walk the order and, whenever a track shares
+ * an artist with either of the two before it, swap in the next track
+ * that conflicts with neither (fallback: differs from the immediate
+ * neighbor only). Index 0 is never moved; the result stays a permutation.
+ * O(n) typical; O(n²) worst case when one artist dominates — fine at
+ * few-thousand-track library scale.
+ */
+function spaceArtists(
+  order: number[],
+  artistOf: (id: number) => string | undefined,
+): number[] {
+  const out = [...order];
+  const keys = new Map<number, string | undefined>();
+  for (const id of out) {
+    const raw = artistOf(id);
+    keys.set(id, raw === undefined ? undefined : raw.trim().toLowerCase());
+  }
+  const key = (id: number) => keys.get(id);
+
+  for (let i = 1; i < out.length; i++) {
+    const a = key(out[i]);
+    if (a === undefined) continue;
+    const prev1 = key(out[i - 1]);
+    const prev2 = i >= 2 ? key(out[i - 2]) : undefined;
+    if (a !== prev1 && a !== prev2) continue;
+
+    let best = -1;
+    let fallback = -1;
+    for (let j = i + 1; j < out.length; j++) {
+      const k = key(out[j]);
+      if (k !== prev1 && k !== prev2) {
+        best = j;
+        break;
+      }
+      if (fallback === -1 && k !== prev1) fallback = j;
+    }
+    const swap = best !== -1 ? best : fallback;
+    if (swap !== -1) {
+      [out[i], out[swap]] = [out[swap], out[i]];
+    }
+    // else: the remaining suffix is all this artist — nothing to fix.
+  }
+  return out;
+}
+
+/**
+ * Weighted shuffle by exponential race: each track draws a key
+ * −ln(u)/w and the smallest keys go first — exactly weighted sampling
+ * without replacement, so rarely-played tracks *tend* early while still
+ * interleaving like a shuffle. Never-played tracks get w=3 vs ≤1 for
+ * played ones; recency halves the weight of something played today vs.
+ * 90+ days ago at equal counts. Missing play data ⇒ uniform weights.
+ */
+function rediscoveryOrder(
+  ids: readonly number[],
+  seed: number,
+  ctx: ShuffleContext,
+): number[] {
+  const rand = mulberry32(seed);
+  const now = ctx.now ?? Date.now();
+  const keyed = ids.map((id, index) => {
+    const plays = ctx.playsOf?.(id);
+    let w: number;
+    if (plays === undefined) {
+      w = 3;
+    } else {
+      const days = Math.min(
+        90,
+        Math.max(0, (now - plays.lastPlayedAt) / 86_400_000),
+      );
+      w = (1 / (1 + plays.playCount)) * (0.5 + (0.5 * days) / 90);
+    }
+    const u = Math.max(rand(), 1e-12);
+    return { id, index, key: -Math.log(u) / w };
+  });
+  keyed.sort((a, b) => a.key - b.key || a.index - b.index);
+  return keyed.map((k) => k.id);
+}
+
+/**
+ * Unified shuffle entry point. `classic` is byte-identical to the
+ * original seededShuffle+pin behavior for the same seed, so persisted
+ * queues keep their order across this change.
+ */
+export function shuffleOrder(
+  ids: readonly number[],
+  opts: {
+    mode: ShuffleMode;
+    seed: number;
+    first?: number;
+    ctx?: ShuffleContext;
+  },
+): number[] {
+  const ctx = opts.ctx ?? {};
+  if (opts.mode === "rediscovery") {
+    return pinFirst(rediscoveryOrder(ids, opts.seed, ctx), opts.first);
+  }
+  const base = pinFirst(seededShuffle(ids, opts.seed), opts.first);
+  if (opts.mode === "artist-spaced" && ctx.artistOf) {
+    // Repair after pinning so index 0 is never displaced.
+    return spaceArtists(base, ctx.artistOf);
+  }
+  return base;
+}
+
 // ---------------------------------------------------------- construction
 
 export function createQueue(
   sourceId: string,
   trackIds: readonly number[],
-  opts?: { shuffle?: boolean; startTrackId?: number; seed?: number },
+  opts?: {
+    shuffle?: boolean;
+    startTrackId?: number;
+    seed?: number;
+    shuffleMode?: ShuffleMode;
+    ctx?: ShuffleContext;
+  },
 ): QueueState {
   const shuffled = opts?.shuffle ?? false;
   const seed = opts?.seed ?? randomSeed();
-  let order = shuffled ? seededShuffle(trackIds, seed) : [...trackIds];
+  const shuffleMode = opts?.shuffleMode ?? "classic";
+  // The chosen track leads the shuffled order so playback starts on it.
+  const order = shuffled
+    ? shuffleOrder(trackIds, {
+        mode: shuffleMode,
+        seed,
+        first: opts?.startTrackId,
+        ctx: opts?.ctx,
+      })
+    : [...trackIds];
 
-  let position = -1;
-  if (opts?.startTrackId !== undefined) {
-    // The chosen track leads the shuffled order so playback starts on it.
-    if (shuffled) {
-      order = [
-        opts.startTrackId,
-        ...order.filter((id) => id !== opts.startTrackId),
-      ];
-    }
-    position = order.indexOf(opts.startTrackId);
-  }
+  const position =
+    opts?.startTrackId === undefined ? -1 : order.indexOf(opts.startTrackId);
 
   return {
     sourceId,
@@ -95,6 +234,7 @@ export function createQueue(
     sourceOrder: [...trackIds],
     position,
     shuffled,
+    shuffleMode,
     seed,
     repeat: "off",
     history: [],
@@ -193,20 +333,23 @@ export function setRepeat(q: QueueState, mode: RepeatMode): QueueState {
 export function toggleShuffle(
   q: QueueState,
   keepCurrentFirst = true,
+  ctx: ShuffleContext = {},
 ): QueueState {
   const current = currentTrackId(q);
   if (!q.shuffled) {
     const seed = randomSeed();
-    let order = seededShuffle(q.order, seed);
-    if (keepCurrentFirst && current !== null) {
-      order = [current, ...order.filter((id) => id !== current)];
-    }
+    const order = shuffleOrder(q.order, {
+      mode: q.shuffleMode,
+      seed,
+      first: keepCurrentFirst && current !== null ? current : undefined,
+      ctx,
+    });
     return {
       ...q,
       shuffled: true,
       seed,
       order,
-      position: current === null ? -1 : 0,
+      position: current === null ? -1 : order.indexOf(current),
     };
   }
   const inQueue = new Set(q.order);
@@ -214,6 +357,34 @@ export function toggleShuffle(
   return {
     ...q,
     shuffled: false,
+    order,
+    position: current === null ? -1 : order.indexOf(current),
+  };
+}
+
+/**
+ * Switch shuffle algorithm: turns shuffle on (if off) and reshuffles the
+ * whole queue under the new mode with a fresh seed, keeping the current
+ * track playing at position 0. Re-selecting the active mode reshuffles.
+ */
+export function setShuffleMode(
+  q: QueueState,
+  mode: ShuffleMode,
+  ctx: ShuffleContext = {},
+): QueueState {
+  const current = currentTrackId(q);
+  const seed = randomSeed();
+  const order = shuffleOrder(q.order, {
+    mode,
+    seed,
+    first: current ?? undefined,
+    ctx,
+  });
+  return {
+    ...q,
+    shuffled: true,
+    shuffleMode: mode,
+    seed,
     order,
     position: current === null ? -1 : order.indexOf(current),
   };
@@ -292,6 +463,11 @@ export function loadQueue(): PersistedQueue | null {
         sourceOrder: Array.isArray(s.sourceOrder) ? s.sourceOrder : [...s.order],
         history: Array.isArray(s.history) ? s.history : [],
         unplayable: Array.isArray(s.unplayable) ? s.unplayable : [],
+        shuffleMode: ["classic", "artist-spaced", "rediscovery"].includes(
+          s.shuffleMode,
+        )
+          ? s.shuffleMode
+          : "classic",
       },
       currentTrack: parsed.currentTrack ?? null,
       savedAt: parsed.savedAt ?? 0,

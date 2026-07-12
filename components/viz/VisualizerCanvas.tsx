@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { usePlayerRefs } from "@/components/player/PlayerProvider";
+import { FrameAnalyzer } from "@/lib/viz/analyzer";
 
 function themeColor(name: string, fallback: string): string {
   if (typeof window === "undefined") return fallback;
@@ -11,17 +12,13 @@ function themeColor(name: string, fallback: string): string {
   return v || fallback;
 }
 
+const BAR_COUNT = 24;
+
 /**
- * Frequency bars from the shared AnalyserNode. "mini" lives in the media
- * bar; "full" fills whatever box its parent gives it (DPR-aware).
+ * The mini media-bar visualizer: 24 bars fed by the shared cava-style DSP
+ * (gravity fall, monstercat smoothing, sensitivity autoscale).
  */
-export function VisualizerCanvas({
-  variant,
-  className = "",
-}: {
-  variant: "mini" | "full";
-  className?: string;
-}) {
+export function VisualizerCanvas({ className = "" }: { className?: string }) {
   const { analyserRef } = usePlayerRefs();
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -32,8 +29,8 @@ export function VisualizerCanvas({
 
     const accent = themeColor("--color-accent", "#ff4200");
     const dim = themeColor("--color-elem", "#404040");
+    const analyzer = new FrameAnalyzer({ barCount: BAR_COUNT });
     let raf = 0;
-    let data: Uint8Array<ArrayBuffer> | null = null;
 
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
@@ -45,42 +42,39 @@ export function VisualizerCanvas({
     const observer = new ResizeObserver(resize);
     observer.observe(canvas);
 
-    const draw = () => {
+    const draw = (nowMs: number) => {
       raf = requestAnimationFrame(draw);
-      const analyser = analyserRef.current;
       const { width, height } = canvas;
       g.clearRect(0, 0, width, height);
-      if (!analyser) return;
-      if (!data || data.length !== analyser.frequencyBinCount) {
-        data = new Uint8Array(analyser.frequencyBinCount);
-      }
-      analyser.getByteFrequencyData(data);
+      const frame = analyzer.sample(analyserRef.current, nowMs);
 
-      // Drop the top eighth of bins — mostly dead air above ~16 kHz.
-      const bins = Math.floor(data.length * 0.875);
-      const barCount = variant === "mini" ? 24 : 96;
-      const perBar = Math.max(1, Math.floor(bins / barCount));
-      const gap = variant === "mini" ? 1 : 2;
-      const barWidth = (width - gap * (barCount - 1)) / barCount;
-
-      for (let i = 0; i < barCount; i++) {
-        let sum = 0;
-        for (let j = 0; j < perBar; j++) sum += data[i * perBar + j];
-        const v = sum / perBar / 255;
-        const h = Math.max(variant === "mini" ? 2 : 3, v * height);
+      const gap = 1;
+      const barWidth = (width - gap * (BAR_COUNT - 1)) / BAR_COUNT;
+      for (let i = 0; i < BAR_COUNT; i++) {
+        const v = frame.bars[i];
+        const h = Math.max(2, v * height);
         g.fillStyle = v > 0.02 ? accent : dim;
-        g.globalAlpha = variant === "full" ? 0.55 + v * 0.45 : 1;
         g.fillRect(i * (barWidth + gap), height - h, barWidth, h);
       }
-      g.globalAlpha = 1;
     };
-    draw();
+    raf = requestAnimationFrame(draw);
+
+    // Nothing to draw for while the tab is hidden; stop burning frames.
+    const onVisibility = () => {
+      if (document.hidden) {
+        cancelAnimationFrame(raf);
+      } else {
+        raf = requestAnimationFrame(draw);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
       cancelAnimationFrame(raf);
       observer.disconnect();
+      document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [analyserRef, variant]);
+  }, [analyserRef]);
 
   return <canvas ref={canvasRef} className={className} />;
 }

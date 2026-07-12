@@ -38,7 +38,7 @@ export function MediaBar() {
 
           <div className="hidden items-center gap-4 md:flex">
             {vizMode === "mini" && (
-              <VisualizerCanvas variant="mini" className="h-9 w-28" />
+              <VisualizerCanvas className="h-9 w-28" />
             )}
             <button
               aria-label="toggle queue"

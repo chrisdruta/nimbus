@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import {
+  IconChevronUp,
   IconNext,
   IconPause,
   IconPlay,
@@ -8,25 +10,43 @@ import {
   IconRepeat,
   IconShuffle,
 } from "@/components/ui/icons";
+import { ShuffleMenu } from "./ShuffleMenu";
 import { usePlayerActions, usePlayerState } from "./PlayerProvider";
 
 export function TransportControls() {
-  const { playing, shuffled, repeat, current } = usePlayerState();
+  const { playing, shuffled, shuffleMode, repeat, current } = usePlayerState();
   const actions = usePlayerActions();
+  const [menuOpen, setMenuOpen] = useState(false);
   const disabled = current === null;
 
   const side = "cursor-pointer text-muted transition hover:text-white disabled:cursor-default disabled:opacity-40";
 
   return (
     <div className="flex items-center gap-5">
-      <button
-        aria-label="toggle shuffle"
-        onClick={actions.toggleShuffleMode}
-        disabled={disabled}
-        className={`${side} ${shuffled ? "text-accent hover:text-accent" : ""}`}
-      >
-        <IconShuffle size={17} />
-      </button>
+      <div className="relative flex items-center">
+        <button
+          aria-label={`toggle shuffle (${shuffleMode})`}
+          onClick={actions.toggleShuffleMode}
+          disabled={disabled}
+          className={`relative ${side} ${shuffled ? "text-accent hover:text-accent" : ""}`}
+        >
+          <IconShuffle size={17} />
+          {shuffled && shuffleMode !== "classic" && (
+            <span className="absolute -top-1 -right-1.5 text-[9px] font-bold text-accent">
+              {shuffleMode === "artist-spaced" ? "A" : "R"}
+            </span>
+          )}
+        </button>
+        <button
+          aria-label="choose shuffle mode"
+          onClick={() => setMenuOpen((o) => !o)}
+          disabled={disabled}
+          className={`-mr-3 ${side}`}
+        >
+          <IconChevronUp size={11} />
+        </button>
+        {menuOpen && <ShuffleMenu onClose={() => setMenuOpen(false)} />}
+      </div>
       <button aria-label="previous" onClick={actions.prevTrack} disabled={disabled} className={side}>
         <IconPrev size={20} />
       </button>

@@ -1,0 +1,129 @@
+"use client";
+
+import { useEffect, useRef } from "react";
+import { usePlayerRefs, usePlayerState } from "@/components/player/PlayerProvider";
+import { FrameAnalyzer } from "@/lib/viz/analyzer";
+import type { Scene, SceneContext, VizTheme } from "@/lib/viz/scene";
+
+const FULL_BAR_COUNT = 64;
+
+/**
+ * Owns the fullscreen canvas and rAF loop; drives whichever Scene is
+ * active. The FrameAnalyzer persists across scene swaps so DSP state
+ * (gravity, sensitivity) doesn't re-ramp when the user switches scenes.
+ */
+export function SceneHost({
+  scene,
+  theme,
+  className = "",
+}: {
+  scene: Scene;
+  theme: VizTheme;
+  className?: string;
+}) {
+  const { analyserRef } = usePlayerRefs();
+  const { playing } = usePlayerState();
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const analyzerRef = useRef<FrameAnalyzer | null>(null);
+  const sceneRef = useRef(scene);
+  const themeRef = useRef(theme);
+  const playingRef = useRef(playing);
+  themeRef.current = theme;
+  playingRef.current = playing;
+
+  // Scene lifecycle: init/dispose on swap; the rAF loop reads sceneRef.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const g = canvas?.getContext("2d");
+    if (!canvas || !g) return;
+    const sc: SceneContext = {
+      g,
+      width: canvas.width,
+      height: canvas.height,
+      dpr: window.devicePixelRatio || 1,
+    };
+    scene.init(sc);
+    scene.resize(sc); // canvas is already sized; give layout-derived state
+    sceneRef.current = scene;
+    return () => scene.dispose();
+  }, [scene]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const g = canvas?.getContext("2d");
+    if (!canvas || !g) return;
+
+    analyzerRef.current ??= new FrameAnalyzer({
+      barCount: FULL_BAR_COUNT,
+      wantWaveform: true,
+    });
+    const analyzer = analyzerRef.current;
+
+    const sc: SceneContext = {
+      g,
+      width: canvas.width,
+      height: canvas.height,
+      dpr: window.devicePixelRatio || 1,
+    };
+
+    const resize = () => {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.max(1, Math.round(rect.width * dpr));
+      canvas.height = Math.max(1, Math.round(rect.height * dpr));
+      sc.width = canvas.width;
+      sc.height = canvas.height;
+      sc.dpr = dpr;
+      sceneRef.current.resize(sc);
+    };
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(canvas);
+
+    const reducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+
+    let raf = 0;
+    let lastDraw = 0;
+    let idleFrames = 0;
+    const startSec = performance.now() / 1000;
+
+    const draw = (nowMs: number) => {
+      raf = requestAnimationFrame(draw);
+
+      // Frame-skip throttles: ~15 fps under reduced motion, ~4 fps when
+      // paused and the bars have settled (energy ≈ 0).
+      const idle = idleFrames > 90;
+      const interval = reducedMotion ? 66 : idle ? 250 : 0;
+      if (interval > 0 && nowMs - lastDraw < interval) return;
+      lastDraw = nowMs;
+
+      const frame = analyzer.sample(analyserRef.current, nowMs);
+      if (!playingRef.current && frame.energy < 0.004) idleFrames++;
+      else idleFrames = 0;
+
+      if (reducedMotion) {
+        frame.beat = false;
+        frame.beatIntensity = 0;
+      }
+      const t = { ...themeRef.current, reducedMotion };
+      sceneRef.current.frame(sc, frame, t, nowMs / 1000 - startSec);
+    };
+    raf = requestAnimationFrame(draw);
+
+    const onVisibility = () => {
+      cancelAnimationFrame(raf);
+      if (!document.hidden) raf = requestAnimationFrame(draw);
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      observer.disconnect();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [analyserRef]);
+
+  return <canvas ref={canvasRef} className={className} />;
+}

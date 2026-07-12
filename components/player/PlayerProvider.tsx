@@ -24,11 +24,14 @@ import {
   reconcile,
   saveQueue,
   setRepeat,
+  setShuffleMode as engineSetShuffleMode,
   toggleShuffle,
   upcoming,
   type QueueState,
   type QueueTrack,
   type RepeatMode,
+  type ShuffleContext,
+  type ShuffleMode,
 } from "@/lib/queue";
 import { useMediaSession } from "@/lib/hooks/useMediaSession";
 import { useToast } from "@/components/ui/Toast";
@@ -43,6 +46,7 @@ export interface PlayerState {
   current: QueueTrack | null;
   playing: boolean;
   shuffled: boolean;
+  shuffleMode: ShuffleMode;
   repeat: RepeatMode;
   volume: number;
   vizMode: VizMode;
@@ -64,6 +68,8 @@ export interface PlayerActions {
   prevTrack(): void;
   jumpToTrack(trackId: number): void;
   toggleShuffleMode(): void;
+  /** Switch shuffle algorithm; turns shuffle on and reshuffles. */
+  setShuffleMode(mode: ShuffleMode): void;
   cycleRepeat(): void;
   setVolume(v: number): void;
   setVizMode(mode: VizMode): void;
@@ -125,6 +131,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const queueRef = useRef<QueueState | null>(null);
   const metaRef = useRef<Map<number, QueueTrack>>(new Map());
   const failStreakRef = useRef(0);
+  const playsRef = useRef<Map<number, { playCount: number; lastPlayedAt: number }>>(
+    new Map(),
+  );
+  const playsFetchedAtRef = useRef(0);
 
   const setQueue = useCallback((q: QueueState | null) => {
     queueRef.current = q;
@@ -173,14 +183,52 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const ctx = new AudioContext();
     const source = ctx.createMediaElementSource(el);
     const analyser = ctx.createAnalyser();
-    analyser.fftSize = 512;
-    analyser.smoothingTimeConstant = 0.82;
+    // 2048 gives ~21.5 Hz/bin bass resolution and a ~46 ms scope window.
+    // Down-smoothing lives in the cava-style gravity (lib/viz/dsp.ts), so
+    // the analyser's own smoothing stays low to keep onsets sharp.
+    analyser.fftSize = 2048;
+    analyser.smoothingTimeConstant = 0.5;
     source.connect(analyser);
     analyser.connect(ctx.destination);
     ctxRef.current = ctx;
     analyserRef.current = analyser;
     void ctx.resume();
   }, []);
+
+  // -------------------------------------------------------- shuffle ctx
+
+  const PLAYS_TTL_MS = 5 * 60_000;
+
+  /** Fetch play tallies lazily — only rediscovery shuffles consume them.
+   * Failure degrades to uniform weights (an empty map). */
+  const ensurePlays = useCallback(async (): Promise<void> => {
+    if (Date.now() - playsFetchedAtRef.current < PLAYS_TTL_MS) return;
+    try {
+      const res = await fetch("/api/plays");
+      if (!res.ok) return;
+      const { plays } = (await res.json()) as {
+        plays: Array<{ trackId: number; playCount: number; lastPlayedAt: string }>;
+      };
+      playsRef.current = new Map(
+        plays.map((p) => [
+          p.trackId,
+          { playCount: p.playCount, lastPlayedAt: Date.parse(p.lastPlayedAt) },
+        ]),
+      );
+      playsFetchedAtRef.current = Date.now();
+    } catch {
+      // best-effort
+    }
+  }, [PLAYS_TTL_MS]);
+
+  const buildCtx = useCallback(
+    (): ShuffleContext => ({
+      artistOf: (id) => metaRef.current.get(id)?.artist,
+      playsOf: (id) => playsRef.current.get(id),
+      now: Date.now(),
+    }),
+    [],
+  );
 
   // ------------------------------------------------------------ playback
 
@@ -280,14 +328,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         for (const t of tracks) metaRef.current.set(t.id, toQueueTrack(t));
         const playable = tracks.filter((t) => t.streamable).map((t) => t.id);
         if (playable.length === 0) return;
-        let q = createQueue(sourceKey, playable, {
-          shuffle: opts?.shuffle ?? false,
-          startTrackId,
-        });
-        if (currentTrackId(q) === null) q = jumpTo(q, q.order[0]);
-        failStreakRef.current = 0;
-        setQueue(q);
-        playCurrentOf(q);
+        // Carry the active shuffle algorithm into the new queue.
+        const mode = queueRef.current?.shuffleMode ?? "classic";
+        const shuffle = opts?.shuffle ?? false;
+        void (async () => {
+          if (shuffle && mode === "rediscovery") await ensurePlays();
+          let q = createQueue(sourceKey, playable, {
+            shuffle,
+            startTrackId,
+            shuffleMode: mode,
+            ctx: buildCtx(),
+          });
+          if (currentTrackId(q) === null) q = jumpTo(q, q.order[0]);
+          failStreakRef.current = 0;
+          setQueue(q);
+          playCurrentOf(q);
+        })();
       },
 
       registerTracks(sourceKey, tracks) {
@@ -361,7 +417,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       toggleShuffleMode() {
         const q = queueRef.current;
         if (!q) return;
-        setQueue(toggleShuffle(q));
+        void (async () => {
+          if (!q.shuffled && q.shuffleMode === "rediscovery") {
+            await ensurePlays();
+          }
+          setQueue(toggleShuffle(q, true, buildCtx()));
+        })();
+      },
+
+      setShuffleMode(mode) {
+        void (async () => {
+          if (mode === "rediscovery") await ensurePlays();
+          const q = queueRef.current;
+          if (!q) return;
+          setQueue(engineSetShuffleMode(q, mode, buildCtx()));
+        })();
       },
 
       cycleRepeat() {
@@ -393,7 +463,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           .filter((t): t is QueueTrack => t !== undefined);
       },
     };
-  }, [ensureGraph, resolveAndPlay, setQueue]);
+  }, [buildCtx, ensureGraph, ensurePlays, resolveAndPlay, setQueue]);
 
   // Keep `current` in sync with the queue position.
   useEffect(() => {
@@ -420,6 +490,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       current,
       playing,
       shuffled: queue?.shuffled ?? false,
+      shuffleMode: queue?.shuffleMode ?? "classic",
       repeat: queue?.repeat ?? "off",
       volume,
       vizMode,

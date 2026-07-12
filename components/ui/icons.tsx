@@ -138,3 +138,9 @@ export const IconX = (p: IconProps) => (
     <line x1="19" y1="5" x2="5" y2="19" />
   </svg>
 );
+
+export const IconChevronUp = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="m6 15 6-6 6 6" />
+  </svg>
+);

@@ -12,6 +12,7 @@ import {
   saveQueue,
   seededShuffle,
   setRepeat,
+  setShuffleMode,
   toggleShuffle,
   upcoming,
   type QueueState,
@@ -201,6 +202,7 @@ describe("persistence", () => {
     delete q.history;
     delete q.unplayable;
     delete q.sourceOrder;
+    delete q.shuffleMode;
     store.set(
       "nimbus.queue.v1",
       JSON.stringify({ state: q, currentTrack: null, savedAt: 1 }),
@@ -209,5 +211,70 @@ describe("persistence", () => {
     expect(loaded?.state.history).toEqual([]);
     expect(loaded?.state.unplayable).toEqual([]);
     expect(loaded?.state.sourceOrder).toEqual(loaded!.state.order);
+    expect(loaded?.state.shuffleMode).toBe("classic");
+  });
+
+  test("round-trips shuffleMode", () => {
+    let q = createQueue("likes", IDS, { shuffle: true, startTrackId: 10 });
+    q = setShuffleMode(q, "artist-spaced");
+    saveQueue(q, null);
+    expect(loadQueue()?.state.shuffleMode).toBe("artist-spaced");
+  });
+});
+
+describe("shuffleMode state", () => {
+  test("createQueue defaults to classic", () => {
+    expect(createQueue("likes", IDS).shuffleMode).toBe("classic");
+    expect(createQueue("likes", IDS, { shuffle: true }).shuffleMode).toBe(
+      "classic",
+    );
+  });
+
+  test("setShuffleMode turns shuffle on and keeps the current track first", () => {
+    let q = createQueue("likes", IDS); // unshuffled
+    q = jumpTo(q, 30);
+    q = setShuffleMode(q, "rediscovery");
+    expect(q.shuffled).toBe(true);
+    expect(q.shuffleMode).toBe("rediscovery");
+    expect(currentTrackId(q)).toBe(30);
+    expect(q.position).toBe(0);
+    expect([...q.order].sort((a, b) => a - b)).toEqual([...IDS]);
+  });
+
+  test("setShuffleMode with nothing selected keeps position -1", () => {
+    const q = setShuffleMode(createQueue("likes", IDS), "artist-spaced");
+    expect(q.position).toBe(-1);
+    expect(q.shuffled).toBe(true);
+  });
+
+  test("re-selecting the active mode reshuffles (new seed)", () => {
+    let q = createQueue("likes", IDS, { shuffle: true, startTrackId: 10 });
+    q = setShuffleMode(q, "classic");
+    const seedA = q.seed;
+    q = setShuffleMode(q, "classic");
+    expect(q.seed).not.toBe(seedA);
+  });
+
+  test("toggleShuffle off and back on keeps the mode", () => {
+    let q = createQueue("likes", IDS, { shuffle: true, startTrackId: 10 });
+    q = setShuffleMode(q, "artist-spaced");
+    q = toggleShuffle(q); // off — source order restored
+    expect(q.shuffled).toBe(false);
+    expect(q.shuffleMode).toBe("artist-spaced");
+    expect(q.order).toEqual([...IDS]);
+    q = toggleShuffle(q); // on — artist-spaced again
+    expect(q.shuffled).toBe(true);
+    expect(q.shuffleMode).toBe("artist-spaced");
+  });
+
+  test("toggleShuffle applies artist spacing through ctx", () => {
+    // Two artists, alternating requirement is satisfiable.
+    const artistOf = (id: number) => (id <= 30 ? "x" : "y");
+    let q = createQueue("likes", [10, 20, 30, 40, 50, 60]);
+    q = { ...q, shuffleMode: "artist-spaced" };
+    q = toggleShuffle(q, true, { artistOf });
+    for (let i = 1; i < q.order.length; i++) {
+      expect(artistOf(q.order[i])).not.toBe(artistOf(q.order[i - 1]));
+    }
   });
 });

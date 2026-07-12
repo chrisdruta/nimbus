@@ -39,6 +39,20 @@ CREATE TABLE IF NOT EXISTS play_counts (
 );
 CREATE INDEX IF NOT EXISTS play_counts_day_idx ON play_counts (day);
 
+-- Per-track lifetime play tallies (rediscovery shuffle weighting, future
+-- "recently played"). One row per (user, track) — bounded by what the
+-- user has actually played, unlike an event log.
+CREATE TABLE IF NOT EXISTS track_plays (
+  user_id         bigint      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  track_id        bigint      NOT NULL,
+  play_count      integer     NOT NULL DEFAULT 1,
+  first_played_at timestamptz NOT NULL DEFAULT now(),
+  last_played_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, track_id)
+);
+CREATE INDEX IF NOT EXISTS track_plays_recent_idx
+  ON track_plays (user_id, last_played_at DESC);
+
 -- One row of app-wide knobs. The global limit stays under SoundCloud's
 -- 15,000 stream-starts/day client cap to leave concurrency headroom.
 CREATE TABLE IF NOT EXISTS app_settings (

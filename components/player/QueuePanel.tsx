@@ -46,9 +46,14 @@ function Row({
 }
 
 export function QueuePanel({ onClose }: { onClose: () => void }) {
-  const { current } = usePlayerState();
+  const { current, shuffled, shuffleMode } = usePlayerState();
   const actions = usePlayerActions();
   const upNext = actions.upcomingTracks(40);
+  const upNextLabel = shuffled
+    ? shuffleMode === "classic"
+      ? "up next · shuffled"
+      : `up next · shuffled (${shuffleMode})`
+    : "up next";
 
   return (
     <div className="fixed top-0 right-0 bottom-[88px] z-30 flex w-80 flex-col bg-side shadow-2xl">
@@ -71,7 +76,7 @@ export function QueuePanel({ onClose }: { onClose: () => void }) {
             <Row track={current} highlight />
           </>
         )}
-        <p className="px-2 py-1 pt-3 text-xs text-muted">up next</p>
+        <p className="px-2 py-1 pt-3 text-xs text-muted">{upNextLabel}</p>
         {upNext.length === 0 && (
           <p className="px-2 py-2 text-sm text-muted">end of queue</p>
         )}

@@ -8,6 +8,23 @@ Powered by the official [SoundCloud API](https://developers.soundcloud.com/)
 — nimbus is a free, personal, non-commercial project. Tracks always credit
 and link back to their creator and SoundCloud.
 
+## What it does (Milestone 4)
+
+- A real visualization system: four fullscreen scenes — *spectrum*
+  (mirrored bars with peak-hold caps), *orbit* (ring of bars around the
+  pulsing artwork), *drift* (beat-reactive particle field), and *scope*
+  (phosphor-trail oscilloscope) — switchable with ←/→, 1–4, or the pill
+  picker; the choice persists. Scenes tint themselves from the track
+  artwork and react to beats via onset detection.
+- All bars (fullscreen and the mini media-bar visualizer) run through a
+  TypeScript port of [cava](https://github.com/karlstav/cava)'s smoothing
+  (monstercat filter, gravity falloff, sensitivity autoscaling) — buttery
+  motion instead of raw FFT jitter. MIT-attributed in `lib/viz/dsp.ts`.
+- Shuffle modes on the shuffle button's chevron menu: **classic**
+  (seeded Fisher–Yates), **artist-spaced** (no artist back-to-back), and
+  **rediscovery** (weights rarely/never-played tracks earlier, powered by
+  per-track play tallies in `track_plays`). Mode persists with the queue.
+
 ## What it does (Milestone 3)
 
 - Invite-only membership: the owner mints single-use invite links (valid
@@ -107,8 +124,9 @@ replacing them must never take more than editing env vars.
       redirects to `/`; re-enabling restores access without re-login;
       a removed user 401s and needs a fresh invite. The owner account
       rejects disable/remove with 400. Non-owner `/api/admin/*` → 403.
-- [ ] End-to-end invite sign-in with a second SoundCloud account
-      (requires the production redirect URI — validate after deploy).
+- [x] End-to-end invite sign-in with a second SoundCloud account
+      (validated in production 2026-07-12: invited member signed in and
+      streamed).
 
 ## Spike results (2026-07-12)
 
@@ -144,8 +162,7 @@ bun test           # unit tests (tests/)
 
 ## What's next
 
-Milestone 4: a real visualization system and richer shuffle modes
-(artist spacing, rediscovery). Later: feed/reposts/related-track
-continuation and a Tauri client on this same backend. SoundCloud stays
-behind the `MusicProvider` seam (`lib/provider.ts`) so the UI never
-depends on provider response shapes.
+Feed/reposts/related-track continuation, richer "recently played" views
+on top of `track_plays`, and a Tauri client on this same backend.
+SoundCloud stays behind the `MusicProvider` seam (`lib/provider.ts`) so
+the UI never depends on provider response shapes.
