@@ -13,7 +13,7 @@
       "INSTALL_ROKIT": "false"
     }
   },
-  "appPort": [3000],
+  "appPort": ["127.0.0.1:3000:3000"],
   "forwardPorts": [3000],
   "portsAttributes": {
     "3000": { "label": "nimbus dev", "onAutoForward": "notify" }
