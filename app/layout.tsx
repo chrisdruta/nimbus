@@ -5,7 +5,7 @@ import "./globals.css";
 const comfortaa = Comfortaa({
   subsets: ["latin"],
   weight: "600",
-  variable: "--font-logo",
+  variable: "--font-comfortaa",
 });
 
 export const metadata: Metadata = {

@@ -1,40 +1,23 @@
-:root {
+@import "tailwindcss";
+
+@theme {
   /* Nimbus dark palette, carried over from legacy/src (Spotify-like identity) */
-  --bg-main: #181818;
-  --bg-side: #121212;
-  --bg-bar: #282828;
-  --bg-elem: #404040;
-  --accent: #ff4200;
-  --text-primary: #ffffff;
-  --text-secondary: #b3b3b3;
-  --scrollbar-thumb: #535353;
+  --color-main: #181818;
+  --color-side: #121212;
+  --color-bar: #282828;
+  --color-elem: #404040;
+  --color-accent: #ff4200;
+  --color-muted: #b3b3b3;
 }
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
-html,
-body {
-  height: 100%;
+@theme inline {
+  --font-logo: var(--font-comfortaa);
 }
 
 body {
-  background: var(--bg-main);
-  color: var(--text-primary);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
-    Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+  background: var(--color-main);
+  color: #ffffff;
   -webkit-font-smoothing: antialiased;
-}
-
-a {
-  color: var(--text-secondary);
-}
-
-a:hover {
-  color: var(--accent);
 }
 
 ::-webkit-scrollbar {
@@ -42,10 +25,14 @@ a:hover {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--bg-main);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
+  background: var(--color-elem);
   border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #535353;
 }
