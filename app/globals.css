@@ -1,0 +1,51 @@
+:root {
+  /* Nimbus dark palette, carried over from legacy/src (Spotify-like identity) */
+  --bg-main: #181818;
+  --bg-side: #121212;
+  --bg-bar: #282828;
+  --bg-elem: #404040;
+  --accent: #ff4200;
+  --text-primary: #ffffff;
+  --text-secondary: #b3b3b3;
+  --scrollbar-thumb: #535353;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg-main);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
+    Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--text-secondary);
+}
+
+a:hover {
+  color: var(--accent);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-main);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 5px;
+}

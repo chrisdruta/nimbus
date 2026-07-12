@@ -1,0 +1,26 @@
+# dependencies
+node_modules/
+
+# next.js
+.next/
+out/
+next-env.d.ts
+
+# production
+build/
+
+# env files — never commit credentials
+.env
+.env.*
+!.env.example
+
+# misc
+.DS_Store
+*.pem
+*.log
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
