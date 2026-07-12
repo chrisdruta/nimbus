@@ -1,32 +1,33 @@
 # nimbus
 
 A SoundCloud listening client focused on shuffle that actually works, a
-locally controlled queue, and reactive visualizations. This branch is the
-**Milestone 1 feasibility spike**: a minimal Next.js app that proves the
-whole pipeline before anything bigger gets built. The 2020 Create React App
-lives on in [`legacy/`](legacy/) for its visual identity.
+locally controlled queue, and reactive visualizations. The 2020 Create
+React App lives on in [`legacy/`](legacy/); this is its Next.js revival.
 
 Powered by the official [SoundCloud API](https://developers.soundcloud.com/)
 — nimbus is a free, personal, non-commercial project. Tracks always credit
 and link back to their creator and SoundCloud.
 
-## What the spike proves
+## What it does (Milestone 2)
 
-1. SoundCloud OAuth 2.1 + PKCE end-to-end (server-side code exchange).
-2. Tokens encrypted at rest (AES-256-GCM) in Neon Postgres.
-3. `/me` and the first page of liked tracks.
-4. A liked track resolves to a stream the browser plays **directly from the
-   SoundCloud CDN** (the backend only brokers JSON, never audio).
-5. A Web Audio `AnalyserNode` sees real frequency data — or the on-page
-   badge records exactly which CORS failure mode blocks it.
-6. Track-to-track transition through the same audio element.
-7. Single-use refresh-token rotation, serialized under a Postgres row lock.
-8. A single-owner gate (`OWNER_SC_USER_ID`) until the invite system exists.
+- Sign in with SoundCloud (OAuth 2.1 + PKCE; tokens AES-256-GCM encrypted
+  in Neon, single-use refresh rotation serialized under a row lock).
+- Browse your entire likes collection and playlists — cursor-paginated
+  with infinite scroll, artwork-tinted headers, the signature chip tiles.
+- True seeded Fisher–Yates shuffle with a locally persisted queue
+  (order/position/history survive reloads), repeat off/all/one,
+  history-aware prev, and automatic skipping of unstreamable tracks.
+- Full media bar: transport, scrubbing seek bar, persisted volume, queue
+  panel, share, and Media Session (media-key/lock-screen) support.
+- Live Web Audio visualizer (mini in the bar + fullscreen), fed by one
+  persistent analyzed audio element streaming **directly from the
+  SoundCloud CDN** — the backend only brokers JSON, never audio.
+- Single-owner gate (`OWNER_SC_USER_ID`) until the invite system exists.
 
 ## Stack
 
-Next.js 16 (App Router, TypeScript) · Bun · Neon Postgres
-(`@neondatabase/serverless`) · `jose` sessions · no ORM, no CSS framework.
+Next.js 16 (App Router, TypeScript) · Bun · Tailwind CSS v4 · Neon
+Postgres (`@neondatabase/serverless`) · `jose` sessions · no ORM.
 
 ```
 Browser ── page + /api/* ──────────── Next.js (token broker; holds secrets)
@@ -35,9 +36,9 @@ Browser ── page + /api/* ──────────── Next.js (token
    └── audio ──────────────────────── SoundCloud CDN (direct)
 ```
 
-## Setup — the credentials checkpoint
+## Setup
 
-Everything builds and tests without credentials. To run the spike for real:
+Everything builds and tests without credentials. To run it for real:
 
 1. **Register the app** (needs an Artist Pro subscription):
    <https://developers.soundcloud.com/docs/api/register-app>.
@@ -105,10 +106,12 @@ bun run typecheck  # tsc --noEmit
 bun test           # unit tests (tests/)
 ```
 
-## What's next (not in this spike)
+## What's next
 
-Full likes pagination, Fisher–Yates shuffle + persistent queue, the legacy
-visual identity port, invite/allowlist/quota system, Vercel deployment, a
-real visualization system, and eventually a Tauri client on this same
-backend. SoundCloud stays behind the `MusicProvider` seam
-(`lib/provider.ts`) so the UI never depends on provider response shapes.
+Milestone 3: invite/allowlist system, per-user and global stream-start
+quotas (SoundCloud caps 15,000 starts/day per client id), admin controls.
+Milestone 4: a real visualization system and richer shuffle modes
+(artist spacing, rediscovery). Later: feed/reposts/related-track
+continuation and a Tauri client on this same backend. SoundCloud stays
+behind the `MusicProvider` seam (`lib/provider.ts`) so the UI never
+depends on provider response shapes.
