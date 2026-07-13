@@ -3,6 +3,7 @@ import {
   clearQueue,
   createQueue,
   currentTrackId,
+  integrate,
   jumpTo,
   loadQueue,
   markUnplayable,
@@ -154,6 +155,82 @@ describe("reconcile", () => {
     expect(q.order).not.toContain(50);
     expect(q.order[q.order.length - 1]).toBe(60);
     expect(q.sourceOrder).toEqual([20, 30, 40, 60]);
+  });
+});
+
+describe("integrate", () => {
+  test("unshuffled appends in arrival order", () => {
+    let q = createQueue("likes", IDS, { startTrackId: 30 });
+    q = integrate(q, [60, 70]);
+    expect(q.order).toEqual([...IDS, 60, 70]);
+    expect(q.sourceOrder).toEqual([...IDS, 60, 70]);
+    expect(currentTrackId(q)).toBe(30);
+  });
+
+  test("shuffled inserts only after the current position", () => {
+    let q = createQueue("likes", IDS, { shuffle: true, startTrackId: 30 });
+    q = next(q).state;
+    q = next(q).state; // position 2
+    const playedPrefix = q.order.slice(0, q.position + 1);
+    const fresh = [60, 70, 80, 90];
+    const merged = integrate(q, fresh, {});
+    expect(merged.order.slice(0, merged.position + 1)).toEqual(playedPrefix);
+    for (const id of fresh) {
+      expect(merged.order.indexOf(id)).toBeGreaterThan(merged.position);
+    }
+    expect(currentTrackId(merged)).toBe(currentTrackId(q));
+  });
+
+  test("result is a permutation of old order plus new ids", () => {
+    let q = createQueue("likes", IDS, { shuffle: true, startTrackId: 10 });
+    const merged = integrate(q, [60, 70, 80]);
+    expect([...merged.order].sort((a, b) => a - b)).toEqual(
+      [...IDS, 60, 70, 80].sort((a, b) => a - b),
+    );
+    expect(merged.sourceOrder).toEqual([...q.sourceOrder, 60, 70, 80]);
+  });
+
+  test("is deterministic for a fixed seed and order length", () => {
+    const q = createQueue("likes", IDS, {
+      shuffle: true,
+      startTrackId: 10,
+      seed: 1234,
+    });
+    expect(integrate(q, [60, 70, 80]).order).toEqual(
+      integrate(q, [60, 70, 80]).order,
+    );
+  });
+
+  test("mixes into the remainder rather than always appending at the tail", () => {
+    // With a large enough batch, at least one insertion must land strictly
+    // inside the existing remainder for any seed.
+    const many = Array.from({ length: 200 }, (_, i) => (i + 1) * 10);
+    let q = createQueue("likes", many.slice(0, 50), {
+      shuffle: true,
+      startTrackId: 10,
+    });
+    const fresh = many.slice(50);
+    const merged = integrate(q, fresh);
+    const tail = merged.order.slice(-fresh.length);
+    expect(tail).not.toEqual(fresh);
+  });
+
+  test("dedupes known ids and no-ops on empty input", () => {
+    const q = createQueue("likes", IDS, { shuffle: true, startTrackId: 10 });
+    expect(integrate(q, [])).toBe(q);
+    expect(integrate(q, [10, 20])).toBe(q);
+    const merged = integrate(q, [20, 60]);
+    expect(merged.order.filter((id) => id === 20)).toHaveLength(1);
+    expect(merged.order).toContain(60);
+  });
+
+  test("shuffled queue with nothing selected can insert anywhere", () => {
+    const q = createQueue("likes", IDS, { shuffle: true }); // position -1
+    const merged = integrate(q, [60, 70]);
+    expect(merged.position).toBe(-1);
+    expect([...merged.order].sort((a, b) => a - b)).toEqual(
+      [...IDS, 60, 70].sort((a, b) => a - b),
+    );
   });
 });
 

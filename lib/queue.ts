@@ -397,6 +397,40 @@ export function markUnplayable(q: QueueState, trackId: number): QueueState {
 }
 
 /**
+ * Fold newly discovered ids into a live queue (a collection walk streaming
+ * in pages). Unshuffled: append in arrival order. Shuffled: insert each id
+ * at a seeded random index strictly after `position`, so late pages mix
+ * into the unplayed remainder instead of piling up at the tail. Never
+ * drops ids — removal stays reconcile's job.
+ */
+export function integrate(
+  q: QueueState,
+  newIds: readonly number[],
+  _ctx: ShuffleContext = {},
+): QueueState {
+  const known = new Set(q.order);
+  const fresh = newIds.filter((id) => !known.has(id));
+  if (fresh.length === 0) return q;
+
+  const sourceOrder = [...q.sourceOrder, ...fresh];
+  if (!q.shuffled) {
+    return { ...q, order: [...q.order, ...fresh], sourceOrder };
+  }
+
+  // Uniform seeded insertion for every mode; artist-spacing/rediscovery
+  // weighting of insertions would visibly reorder the upcoming list on
+  // each page, so it's deliberately not applied here.
+  const rand = mulberry32((q.seed ^ q.order.length) >>> 0);
+  const order = [...q.order];
+  const floor = q.position + 1;
+  for (const id of fresh) {
+    const span = order.length - floor + 1;
+    order.splice(floor + Math.floor(rand() * span), 0, id);
+  }
+  return { ...q, order, sourceOrder };
+}
+
+/**
  * Sync with a refetched collection: drop ids that vanished, append new ids
  * to the end of the order (shuffled or not — they arrive as discoveries).
  */

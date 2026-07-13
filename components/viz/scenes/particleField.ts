@@ -52,11 +52,16 @@ export function createParticleFieldScene(): Scene {
     frame(sc: SceneContext, f: AudioFrame, theme: VizTheme) {
       const { g, width, height, dpr } = sc;
 
-      // Trails: translucent fill; full clear under reduced motion.
-      g.globalAlpha = firstFrame || theme.reducedMotion ? 1 : 0.28;
-      g.fillStyle = theme.background;
-      g.fillRect(0, 0, width, height);
-      g.globalAlpha = 1;
+      // Trails on a transparent canvas: erase a fraction of the previous
+      // frame so streaks fade toward the backdrop; full clear when reduced.
+      if (firstFrame || theme.reducedMotion) {
+        g.clearRect(0, 0, width, height);
+      } else {
+        g.globalCompositeOperation = "destination-out";
+        g.fillStyle = "rgba(0, 0, 0, 0.28)";
+        g.fillRect(0, 0, width, height);
+        g.globalCompositeOperation = "source-over";
+      }
       firstFrame = false;
 
       const impulse =

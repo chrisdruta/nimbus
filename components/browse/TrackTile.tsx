@@ -39,7 +39,7 @@ export const TrackTile = memo(function TrackTile({
           ? `${track.title} — ${track.artist}`
           : `${track.title} — unavailable`
       }
-      className={`group relative aspect-square overflow-hidden rounded-md bg-bar text-left ${
+      className={`group relative aspect-square overflow-hidden rounded-md bg-bar/40 text-left ${
         track.streamable ? "cursor-pointer" : "opacity-40 grayscale"
       } ${isCurrent ? "ring-2 ring-accent" : ""}`}
     >

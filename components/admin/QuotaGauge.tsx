@@ -6,7 +6,7 @@ import type { AdminOverview } from "./AdminView";
 export function QuotaGauge({ overview }: { overview: AdminOverview | null }) {
   if (!overview) {
     return (
-      <section className="rounded-xl border border-elem p-5">
+      <section className="rounded-xl border border-elem bg-side/60 p-5 backdrop-blur-md">
         <p className="text-sm text-muted">loading today&apos;s usage…</p>
       </section>
     );
@@ -18,7 +18,7 @@ export function QuotaGauge({ overview }: { overview: AdminOverview | null }) {
     ratio >= 0.9 ? "bg-red-500" : ratio >= 0.7 ? "bg-yellow-500" : "bg-accent";
 
   return (
-    <section className="rounded-xl border border-elem p-5">
+    <section className="rounded-xl border border-elem bg-side/60 p-5 backdrop-blur-md">
       <div className="flex items-baseline justify-between">
         <h2 className="text-sm tracking-widest text-muted uppercase">
           Global stream starts today

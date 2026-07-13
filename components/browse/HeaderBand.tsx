@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { artworkSized, averageColor } from "@/lib/artwork";
+import { artworkSized } from "@/lib/artwork";
 
-/** Artwork-tinted gradient band over the browse view (legacy signature). */
+/** Browse-view header. Sits directly on the ambient backdrop — no tint
+ * band of its own, just a soft top scrim so the title always reads. */
 export function HeaderBand({
   title,
   subtitle,
@@ -15,25 +15,8 @@ export function HeaderBand({
   artworkUrl: string | null;
   actions?: React.ReactNode;
 }) {
-  const [tint, setTint] = useState("#282828");
-
-  useEffect(() => {
-    let cancelled = false;
-    void averageColor(artworkSized(artworkUrl, "t300x300")).then((c) => {
-      if (!cancelled) setTint(c);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [artworkUrl]);
-
   return (
-    <header
-      className="flex items-end gap-6 px-6 pt-16 pb-6 transition-[background] duration-1000"
-      style={{
-        background: `linear-gradient(to bottom, ${tint}, var(--color-main))`,
-      }}
-    >
+    <header className="flex items-end gap-6 bg-gradient-to-b from-black/30 to-transparent px-6 pt-16 pb-6">
       {artworkUrl && (
         // eslint-disable-next-line @next/next/no-img-element
         <img

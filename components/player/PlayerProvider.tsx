@@ -16,6 +16,7 @@ import { formatReset } from "@/lib/format";
 import {
   createQueue,
   currentTrackId,
+  integrate,
   jumpTo,
   loadQueue,
   markUnplayable,
@@ -50,8 +51,6 @@ import {
   type PublishedBeat,
 } from "@/lib/hooks/useSlipstreamPublisher";
 import { useToast } from "@/components/ui/Toast";
-
-export type VizMode = "off" | "mini" | "full";
 
 /** Stops runaway skip loops when many tracks in a row fail to stream. */
 const MAX_CONSECUTIVE_FAILURES = 5;
@@ -111,7 +110,8 @@ export interface PlayerState {
   shuffleMode: ShuffleMode;
   repeat: RepeatMode;
   volume: number;
-  vizMode: VizMode;
+  /** Fullscreen stage (art + viz scenes) visibility. */
+  stageOpen: boolean;
   queue: QueueState | null;
   /** What the active source lets the user do; UI gates transport off this. */
   caps: SourceCapabilities;
@@ -129,6 +129,9 @@ export interface PlayerActions {
   ): void;
   /** Feed newly loaded pages: metadata cache + queue reconciliation. */
   registerTracks(sourceKey: string, tracks: readonly ProviderTrack[]): void;
+  /** Sync the queue against a COMPLETE collection — the only path that
+   * drops vanished ids, so never call it with a partial walk. */
+  syncSource(sourceKey: string, tracks: readonly ProviderTrack[]): void;
   togglePlay(): void;
   nextTrack(): void;
   prevTrack(): void;
@@ -138,7 +141,8 @@ export interface PlayerActions {
   setShuffleMode(mode: ShuffleMode): void;
   cycleRepeat(): void;
   setVolume(v: number): void;
-  setVizMode(mode: VizMode): void;
+  openStage(): void;
+  closeStage(): void;
   getMeta(trackId: number): QueueTrack | undefined;
   upcomingTracks(n: number): QueueTrack[];
   /** Follow a member's live queue (read-only). Parks the local queue. */
@@ -193,7 +197,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [current, setCurrent] = useState<QueueTrack | null>(null);
   const [playing, setPlaying] = useState(false);
   const [volume, setVolumeState] = useState(1);
-  const [vizMode, setVizModeState] = useState<VizMode>("mini");
+  const [stageOpen, setStageOpen] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -752,16 +756,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         for (const t of tracks) metaRef.current.set(t.id, toQueueTrack(t));
         const q = queueRef.current;
         if (q && q.sourceId === sourceKey) {
-          // Collections grow as pages stream in; fold new ids into the queue.
-          const known = new Set(q.order);
-          const additions = tracks.filter(
-            (t) => t.streamable && !known.has(t.id),
-          );
-          if (additions.length > 0) {
-            setQueue(
-              reconcile(q, [...q.sourceOrder, ...additions.map((t) => t.id)]),
-            );
-          }
+          // Collections grow as pages stream in; fold new ids into the
+          // queue — shuffled queues mix them into the unplayed remainder.
+          const additions = tracks
+            .filter((t) => t.streamable)
+            .map((t) => t.id);
+          const merged = integrate(q, additions, buildCtx());
+          if (merged !== q) setQueue(merged);
+        }
+      },
+
+      syncSource(sourceKey, tracks) {
+        for (const t of tracks) metaRef.current.set(t.id, toQueueTrack(t));
+        const q = queueRef.current;
+        if (q && q.sourceId === sourceKey) {
+          const fresh = tracks.filter((t) => t.streamable).map((t) => t.id);
+          setQueue(reconcile(integrate(q, fresh, buildCtx()), fresh));
         }
       },
 
@@ -881,7 +891,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         }
       },
 
-      setVizMode: setVizModeState,
+      openStage: () => setStageOpen(true),
+      closeStage: () => setStageOpen(false),
 
       getMeta: (trackId) => metaRef.current.get(trackId),
 
@@ -984,14 +995,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       shuffleMode: queue?.shuffleMode ?? "classic",
       repeat: queue?.repeat ?? "off",
       volume,
-      vizMode,
+      stageOpen,
       queue,
       caps: capsOf(
         slipstream ? "slipstream" : sourceKindOf(queue?.sourceId ?? "likes"),
       ),
       slipstream,
     }),
-    [current, playing, queue, slipstream, volume, vizMode],
+    [current, playing, queue, slipstream, volume, stageOpen],
   );
 
   const refs = useMemo<PlayerRefs>(() => ({ audioRef, analyserRef }), []);

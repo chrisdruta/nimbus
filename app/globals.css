@@ -14,6 +14,44 @@
   --font-logo: var(--font-comfortaa);
 }
 
+/* Translucent chrome over the ambient artwork backdrop. Only apply to
+ * non-scrolling surfaces (sidebar, media bar, panels) — backdrop-filter
+ * on scrolling content is a repaint hazard. */
+@utility glass {
+  background: color-mix(in srgb, var(--color-side) 70%, transparent);
+  backdrop-filter: blur(20px);
+}
+
+/* Slow pan/zoom for the ambient backdrop; scale never drops below 1.25
+ * so the blurred image's soft edges stay off-canvas. */
+@keyframes ambient-drift {
+  from {
+    transform: scale(1.25) translate(-1.5%, -1%);
+  }
+  to {
+    transform: scale(1.35) translate(1.5%, 1%);
+  }
+}
+
+/* Barely-there scale swell for the stage's centered artwork. */
+@keyframes stage-breathe {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.03);
+  }
+}
+
+@keyframes art-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 body {
   background: var(--color-main);
   color: #ffffff;

@@ -33,8 +33,8 @@ export function createRadialSpectrumScene(): Scene {
       const cy = height / 2;
       const [r, gr, b] = theme.accentRgb;
 
-      g.fillStyle = theme.background;
-      g.fillRect(0, 0, width, height);
+      // Transparent canvas; the vignette still darkens the backdrop's rim.
+      g.clearRect(0, 0, width, height);
       if (vignette) {
         g.fillStyle = vignette;
         g.fillRect(0, 0, width, height);

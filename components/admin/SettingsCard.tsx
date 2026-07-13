@@ -48,7 +48,7 @@ export function SettingsCard({
   }
 
   return (
-    <section className="rounded-xl border border-elem p-5">
+    <section className="rounded-xl border border-elem bg-side/60 p-5 backdrop-blur-md">
       <h2 className="text-sm tracking-widest text-muted uppercase">
         Daily limits
       </h2>

@@ -163,7 +163,7 @@ export async function getLikesPage(
 ): Promise<ProviderPage<ProviderTrack>> {
   const url = cursor
     ? decodeCursor(cursor)
-    : "/me/likes/tracks?limit=50&linked_partitioning=true";
+    : "/me/likes/tracks?limit=200&linked_partitioning=true";
   const data = (await scFetch(url, accessToken)) as
     | ScPartitioned<ScTrack>
     | ScTrack[];
@@ -190,7 +190,7 @@ export async function getPlaylistTracks(
 ): Promise<ProviderPage<ProviderTrack>> {
   const url = cursor
     ? decodeCursor(cursor)
-    : `/playlists/${playlistId}/tracks?limit=50&linked_partitioning=true`;
+    : `/playlists/${playlistId}/tracks?limit=200&linked_partitioning=true`;
   const data = (await scFetch(url, accessToken)) as
     | ScPartitioned<ScTrack>
     | ScTrack[];

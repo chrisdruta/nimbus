@@ -49,7 +49,7 @@ export function UsersCard({
   }
 
   return (
-    <section className="rounded-xl border border-elem p-5">
+    <section className="rounded-xl border border-elem bg-side/60 p-5 backdrop-blur-md">
       <h2 className="text-sm tracking-widest text-muted uppercase">Users</h2>
       <ul className="mt-4 flex flex-col gap-2">
         {users === null && <li className="text-sm text-muted">loading users…</li>}

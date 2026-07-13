@@ -33,8 +33,8 @@ export function createSpectrumBarsScene(): Scene {
       const cy = height / 2;
       const [r, gr, b] = theme.accentRgb;
 
-      g.fillStyle = theme.background;
-      g.fillRect(0, 0, width, height);
+      // Transparent canvas — the stage's blurred-art backdrop shows through.
+      g.clearRect(0, 0, width, height);
 
       // Beat bloom: a soft glow rising from the bottom, decaying fast.
       if (f.beat) beatGlow = Math.min(1, beatGlow + 0.08 * f.beatIntensity * 10);

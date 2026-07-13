@@ -1,9 +1,10 @@
 "use client";
 
 import { artworkSized } from "@/lib/artwork";
-import { IconCloud, IconX } from "@/components/ui/icons";
+import { IconCloud, IconPanelRight } from "@/components/ui/icons";
 import { formatDuration } from "@/lib/format";
 import { currentTrackId, type QueueTrack } from "@/lib/queue";
+import type { FeedRow } from "@/components/slipstream/useSlipstreamFeed";
 import { usePlayerActions, usePlayerState } from "./PlayerProvider";
 
 function Row({
@@ -45,7 +46,91 @@ function Row({
   );
 }
 
-export function QueuePanel({ onClose }: { onClose: () => void }) {
+/** Who's live, as rows the user can join/leave from. */
+function LiveSection({ rows, you }: { rows: FeedRow[]; you: number | null }) {
+  const { slipstream } = usePlayerState();
+  const actions = usePlayerActions();
+
+  return (
+    <>
+      <p className="px-2 py-1 text-xs text-muted">listening now</p>
+      <ul className="space-y-0.5 pb-2">
+        {rows.map((r) => {
+          const self = r.hostId === you;
+          const active = slipstream?.host.userId === r.hostId;
+          const name = r.username ?? "member";
+          const inner = (
+            <>
+              {r.avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={r.avatarUrl}
+                  alt=""
+                  className="h-8 w-8 shrink-0 rounded-full object-cover"
+                />
+              ) : (
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-elem text-muted">
+                  <IconCloud size={13} />
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm">
+                  {name}
+                  {self && <span className="text-muted"> (you)</span>}
+                </p>
+                {r.track && (
+                  <p className="truncate text-xs text-muted">
+                    {r.track.title} — {r.track.artist}
+                  </p>
+                )}
+              </div>
+            </>
+          );
+          return (
+            <li key={r.hostId}>
+              {self ? (
+                <div className="flex items-center gap-2.5 rounded px-2 py-1.5">
+                  {inner}
+                </div>
+              ) : active ? (
+                <div className="flex items-center gap-2.5 rounded border-l-2 border-accent bg-white/5 px-2 py-1.5">
+                  {inner}
+                  <button
+                    onClick={actions.leaveSlipstream}
+                    className="shrink-0 cursor-pointer text-xs text-muted transition hover:text-accent"
+                  >
+                    leave
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => void actions.joinSlipstream(r.hostId)}
+                  title={`join ${name}'s slipstream`}
+                  className="flex w-full cursor-pointer items-center gap-2.5 rounded px-2 py-1.5 text-left transition hover:bg-white/5"
+                >
+                  {inner}
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </>
+  );
+}
+
+/** Unified right column: live presence up top (when anyone's on), the
+ * queue below — one home for everything social + upcoming. Rendered as
+ * a persistent, collapsible layout column by AppShell. */
+export function SidePanel({
+  onClose,
+  feed,
+  you,
+}: {
+  onClose: () => void;
+  feed: FeedRow[];
+  you: number | null;
+}) {
   const { current, shuffled, shuffleMode, caps, slipstream, queue } =
     usePlayerState();
   const actions = usePlayerActions();
@@ -63,17 +148,18 @@ export function QueuePanel({ onClose }: { onClose: () => void }) {
   const parked = parkedId !== null ? actions.getMeta(parkedId) : undefined;
 
   return (
-    <div className="fixed top-0 right-0 bottom-[88px] z-30 flex w-80 flex-col bg-side shadow-2xl">
+    <div className="flex h-full flex-col">
       <div className="flex items-center justify-between p-4 pb-2">
         <h2 className="text-sm font-semibold tracking-widest text-muted uppercase">
           {slipstream ? "Slipstream" : "Queue"}
         </h2>
         <button
-          aria-label="close queue"
+          aria-label="collapse queue"
+          title="collapse"
           onClick={onClose}
-          className="cursor-pointer text-muted hover:text-white"
+          className="cursor-pointer text-muted transition hover:text-white"
         >
-          <IconX size={16} />
+          <IconPanelRight size={16} />
         </button>
       </div>
       {slipstream && (
@@ -90,6 +176,7 @@ export function QueuePanel({ onClose }: { onClose: () => void }) {
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+        {feed.length > 0 && <LiveSection rows={feed} you={you} />}
         {current && (
           <>
             <p className="px-2 py-1 text-xs text-muted">now playing</p>

@@ -1,17 +1,17 @@
 "use client";
 
-import { SCENE_META, type SceneId } from "@/lib/viz/scene";
+import { STAGE_META, type StageMode } from "@/lib/stage";
 
 export function ScenePicker({
   active,
   onSelect,
 }: {
-  active: SceneId;
-  onSelect: (id: SceneId) => void;
+  active: StageMode;
+  onSelect: (id: StageMode) => void;
 }) {
   return (
     <div className="flex items-center gap-2">
-      {SCENE_META.map(({ id, label }) => (
+      {STAGE_META.map(({ id, label }) => (
         <button
           key={id}
           onClick={(e) => {

@@ -1,8 +1,9 @@
 "use client";
 
 import { artworkSized } from "@/lib/artwork";
-import { IconCloud, IconShare } from "@/components/ui/icons";
+import { IconCloud, IconExpand, IconShare } from "@/components/ui/icons";
 import { useToast } from "@/components/ui/Toast";
+import { writePref } from "@/lib/prefs";
 import { usePlayerActions, usePlayerState } from "./PlayerProvider";
 
 /** Current track info; the links double as the required SoundCloud
@@ -15,8 +16,8 @@ export function NowPlaying() {
   if (!current) {
     return (
       <div className="flex items-center gap-3 text-sm text-muted">
-        <div className="flex h-14 w-14 items-center justify-center rounded bg-elem/40">
-          <IconCloud size={20} />
+        <div className="flex h-16 w-16 items-center justify-center rounded-md bg-elem/40">
+          <IconCloud size={22} />
         </div>
         nothing playing
       </div>
@@ -27,14 +28,29 @@ export function NowPlaying() {
 
   return (
     <div className="flex min-w-0 items-center gap-3">
-      {art ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={art} alt="" className="h-14 w-14 rounded object-cover" />
-      ) : (
-        <div className="flex h-14 w-14 items-center justify-center rounded bg-elem/40 text-muted">
-          <IconCloud size={20} />
-        </div>
-      )}
+      <button
+        aria-label="open full-screen art"
+        title="open full-screen art"
+        onClick={() => {
+          // The thumb always opens on the art itself; the bar's expand
+          // button keeps whatever mode was last used.
+          writePref("stageMode", "art");
+          actions.openStage();
+        }}
+        className="group relative shrink-0 cursor-pointer"
+      >
+        {art ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={art} alt="" className="h-16 w-16 rounded-md object-cover" />
+        ) : (
+          <div className="flex h-16 w-16 items-center justify-center rounded-md bg-elem/40 text-muted">
+            <IconCloud size={22} />
+          </div>
+        )}
+        <span className="absolute inset-0 flex items-center justify-center rounded bg-black/50 text-white opacity-0 transition group-hover:opacity-100">
+          <IconExpand size={16} />
+        </span>
+      </button>
       <div className="min-w-0">
         <a
           href={current.permalinkUrl}

@@ -24,11 +24,16 @@ export function createOscilloscopeScene(): Scene {
       const cy = height / 2;
       const [r, gr, b] = theme.accentRgb;
 
-      // Phosphor persistence: translucent fill instead of a clear.
-      g.globalAlpha = firstFrame || theme.reducedMotion ? 1 : 0.35;
-      g.fillStyle = theme.background;
-      g.fillRect(0, 0, width, height);
-      g.globalAlpha = 1;
+      // Phosphor persistence on a transparent canvas: erase a fraction of
+      // the previous frame so trails fade toward the backdrop, not black.
+      if (firstFrame || theme.reducedMotion) {
+        g.clearRect(0, 0, width, height);
+      } else {
+        g.globalCompositeOperation = "destination-out";
+        g.fillStyle = "rgba(0, 0, 0, 0.35)";
+        g.fillRect(0, 0, width, height);
+        g.globalCompositeOperation = "source-over";
+      }
       firstFrame = false;
 
       // Faint centerline beneath the trace.

@@ -29,9 +29,6 @@ project 30 days) trends toward its cap in the dashboard.
 - **Slipstream follow-ups** — private-listening opt-out toggle (one
   `users` column + a `WHERE`, the heartbeat POST early-returns); preview
   badge for `access: "preview"` tracks (30s snippets via the API).
-- **Visualization redesign pass** — the M4 scenes work but Chris has
-  redesign ideas; the `Scene` interface (`lib/viz/scene.ts`) makes visual
-  rework independent of the DSP/analysis layer.
 - **Feed / reposts / related-track continuation** — keep playback going
   past the end of a collection.
 - **Recently played** — views on top of `track_plays`
@@ -39,6 +36,89 @@ project 30 days) trends toward its cap in the dashboard.
 - **Tauri client** — native shell on this same backend.
 
 ## Shipped
+
+### Milestone 7 — ambient art shell (2026-07-13)
+
+Artwork became the design system (absorbs the old "visualization redesign
+pass" idea). The current track's art is a blurred, dimmed, slowly
+drifting backdrop behind the whole shell (`AmbientBackdrop` +
+`CrossfadeArt`, decode-then-crossfade so tracks never pop; neutral
+gradient fallback); sidebar, media bar, and panels are translucent glass
+(one `@utility glass` token, alpha modifiers elsewhere — backdrop-filter
+only on non-scrolling chrome). Queue and slipstream presence unified into
+one right-side `SidePanel` ("listening now" rows with join/leave above
+the queue; accent dot on the bar toggle when anyone's live; sidebar
+slimmed to nav + playlists). Media bar decluttered: mini visualizer
+always on and clickable, volume collapsed to an icon + flyout, one
+expand button; `vizMode` tri-state replaced by `stageOpen`. The
+fullscreen viz became the **stage** (`FullscreenStage`, `lib/stage.ts`):
+an "art" mode — sharp artwork floating over its own blurred fill,
+album-art-screensaver style, opened by clicking the player thumbnail —
+plus the four scenes, all now painting on transparent canvases over the
+art backdrop (clearRect / destination-out trails; orbit's disc floats
+over its own blur). Fullscreen track credits upgraded to real SoundCloud
+links (previously plain text). HeaderBand's averageColor tint band
+retired (superseded by the ambient layer; `averageColor()` deleted,
+`extractPalette` stays for viz theming). Scene prefs migrate
+(`vizScene` → `stageMode` fallback read). Polish rider from first local
+try-out: icons swapped to lucide-react behind the same `Icon*` wrappers
+(`components/ui/icons.tsx`); the queue/slipstream panel promoted from
+overlay to a persistent collapsible layout column (open by default,
+`queuePanel` pref, reopen button floats top-right of the main view when
+collapsed — this also removed the `bottom-[88px]` bar-height coupling);
+media bar grew to h-24 with bigger transport and thumb; volume flyout
+overflow fixed (a viewport-edge flyout caused a horizontal scrollbar) and
+volume moved to lead the right cluster, which is now column-centered; the
+stage runs *inside* the shell (`StageView` overlays only the main content
+area — sidebar, queue, and media bar stay); a slim pinned header (artwork,
+title, count, compact shuffle/play) fades in when the browse header
+scrolls away; shuffle got an on-dot, a bigger mode chevron, and an
+explicit "off" row in the mode menu; the shell's floating menu/queue
+buttons anchor at the row level so they no longer scroll with content;
+tile minimum 200px.
+
+Validation:
+- 179 unit tests green (3 new: stage-mode strip, cycling, validation);
+  typecheck + production build clean; queue/slipstream/DSP tests
+  untouched.
+- Visual pass (playwright-cli, minted session): idle fallback gradient;
+  backdrop follows the playing track through the glass shell; side panel
+  shows queue rows (and live section when hosts exist); art stage opens
+  from the player thumbnail with idle-fading chrome and working mode
+  pills/arrow keys; spectrum + orbit render over visible art instead of
+  black (caught and fixed a stacking bug where absolute backdrop layers
+  painted over the in-flow canvas); admin cards legible on glass; 400px
+  viewport still functional (drawer, single-column grid, compact bar).
+
+### Milestone 6 — full-library shuffle (2026-07-13)
+
+Shuffle now covers the entire collection instead of the first loaded page.
+Page size bumped to SoundCloud's 200 max; `useLibrary`
+(`lib/hooks/useLibrary.ts`, replacing `useTrackPages`) walks every page of
+a source when it opens and persists the normalized list in IndexedDB
+(`lib/idb.ts`, hand-rolled wrapper) keyed per user+source. Next session
+hydrates instantly from cache; a live first-page check
+(`lib/library-cache.ts`: pure freshness policy, 24h TTL, 30-day eviction)
+decides whether the cache stands or a fresh walk runs — the displayed list
+only shrinks on a *completed* walk. New pure `integrate()` in
+`lib/queue.ts` mixes late-arriving pages into the unplayed remainder of a
+shuffled queue (seeded, deterministic) instead of piling them at the tail;
+removals stay confined to the new `syncSource` player action, which only
+ever sees complete lists. BrowseView keeps windowed rendering (the data is
+all in memory; the DOM grows by 50 tiles via the existing sentinel).
+
+Validation:
+- 176 unit tests green (24 new: `integrate` insertion bounds/permutation/
+  determinism/dedupe, cache validator, page merge, first-page-change and
+  skip-walk truth tables); typecheck + build clean.
+- Live (playwright-cli, minted session): library shows the full
+  626 tracks · 598 playable (was 50); reload renders the full count
+  instantly from IndexedDB and issues exactly one first-page check;
+  decoded cursor confirms SoundCloud honored `page_size=200`; Shuffle
+  produces a persisted queue with all 598 playable ids
+  (`order`/`sourceOrder` length 598, shuffled, position 0).
+- Existing persisted `nimbus.queue.v1` payloads load unchanged (no state
+  shape change).
 
 ### Milestone 5 — slipstream: shared live listening (2026-07-13)
 

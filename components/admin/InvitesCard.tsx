@@ -63,7 +63,7 @@ export function InvitesCard({
   }
 
   return (
-    <section className="rounded-xl border border-elem p-5">
+    <section className="rounded-xl border border-elem bg-side/60 p-5 backdrop-blur-md">
       <h2 className="text-sm tracking-widest text-muted uppercase">Invites</h2>
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
