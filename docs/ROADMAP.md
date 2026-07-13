@@ -67,6 +67,66 @@ plain-web also keeps a future Cast receiver a plain page.
 
 ## Shipped
 
+### Milestone 9 — viz overhaul (2026-07-13)
+
+The stage grows up. **Chrome**: track title/artist moved to the top-left,
+keyboard hint tucked into the bottom-right corner below the picker row's
+baseline (can't collide with the centered pill cluster), scene picker +
+new "tune" button stay bottom-center. **Per-scene width**: `SCENE_META`
+carries an optional `maxWidth` (spectrum/ridgeline 1280, scope 1100,
+waterfall full-bleed); StageView centers SceneHost in a capped column
+while the blurred-art backdrop stays full-bleed. **DSP rebalance**
+(`lib/viz/dsp.ts`, still cava-derived): +3 dB/oct spectral tilt
+referenced to 1 kHz (kills the bass slam at the source), tanh soft-knee
+from 0.8 replacing the hard clip, tamer autoscale (max sens 8→6, growth
+0.4→0.15/s, pull-back only when ≥2 bars run hot so a lone bass bar can't
+pump the whole display). Tunables mutate live via
+`SpectrumProcessor.setTuning`; structural changes (bar count, band edges)
+rebuild in `FrameAnalyzer` with sensitivity carried over. Mini-viz
+inherits everything. **Scenes**: orbit (radial) and drift (particles) are
+gone — replaced by **ridgeline** (Unknown Pleasures stacked silhouettes;
+`SpectrumHistory` ring buffer, time-based row commits, max-pool
+downsampling, occluding fills, live front ridge) and **waterfall**
+(scrolling spectrogram on a small offscreen canvas through an
+artwork-accent colormap LUT, aurora via bilinear upscale). Stale
+`stageMode` prefs fall back to "art" through the existing validator.
+**Settings**: presets + advanced knobs per scene
+(`lib/viz/settings.ts` — one versioned pref payload of
+`{preset, overrides}` per scene, field defs drive both clamping and the
+hand-rolled panel; visual knobs flow per-frame via `SceneContext.settings`,
+DSP knobs via SceneHost → analyzer, spectrum-only by design). **Tempo**
+(`lib/viz/tempo.ts`): IOI-histogram estimator (70–180 BPM fold, decaying
+evidence, parabolic peak, phase-locked grid); `AudioFrame.tempo` is null
+unless confident, and scenes pulse on the predicted grid via `beatPulse`
+with raw-onset fallback. **Waveform lookahead**: new provider method
+`getWaveform` (probe finding: `waveform_url` is a PNG on
+`wave.sndcdn.com`; the `.json` sibling returns `{width, height: 140,
+samples[1800]}` with `Access-Control-Allow-Origin: *` — still brokered
+server-side since that variant is undocumented), route
+`GET /api/tracks/[id]/waveform` returns a normalized `TrackShape`
+(98th-percentile envelope, hysteresis quiet/loud sections, drop
+candidates) or `{shape: null}`; StageView fetches only while the stage is
+open (module-level cache), scenes read `SceneContext.track` and lean in
+~2 s ahead of a known drop via `dropAnticipation`. Everything degrades
+gracefully when tempo/shape are absent.
+
+Validation:
+
+- 258 unit tests green (49 new/updated across viz-dsp tilt/soft-knee/
+  autoscale, viz-history ring semantics, viz-colormap ramps,
+  viz-settings validation/clamping/preset layering, viz-tempo trains/
+  jitter/folding/ramps/staleness, viz-trackshape envelopes/sections/
+  drops/queries); `tsc --noEmit` clean; production build clean.
+- playwright-cli pass at 1440 and 2560 wide: chrome positions with no
+  overlap (a tune-button/hint collision was found and fixed by moving
+  the hint below the pill baseline), spectrum/scope centered column vs
+  waterfall full-bleed, all five modes cycle via arrows, tune panel
+  applies presets/sliders live and suppresses the chrome auto-hide,
+  payload persists in `nimbus:pref:sceneSettings`, mini-viz no longer
+  bass-slammed, waveform route returns a real shape end-to-end.
+  (Headless gotcha: element volume was 0, which silences the analyser —
+  not a regression.)
+
 ### Milestone 8 — track radio + feed (2026-07-13)
 
 Discovery arrives, composed from the two endpoints the public API actually

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   computeBinRanges,
   monstercatFilter,
+  softKnee,
   SpectrumProcessor,
   type SpectrumConfig,
 } from "../lib/viz/dsp";
@@ -67,10 +68,38 @@ describe("monstercatFilter", () => {
   });
 });
 
+describe("softKnee", () => {
+  test("identity below the knee", () => {
+    expect(softKnee(0.3, 0.8)).toBe(0.3);
+    expect(softKnee(0.8, 0.8)).toBe(0.8);
+  });
+
+  test("continuous and monotonic through the knee", () => {
+    let prev = -1;
+    for (let v = 0; v <= 3; v += 0.01) {
+      const out = softKnee(v, 0.8);
+      expect(out).toBeGreaterThan(prev);
+      prev = out;
+    }
+    // No jump at the knee itself.
+    expect(softKnee(0.8001, 0.8) - softKnee(0.7999, 0.8)).toBeLessThan(0.001);
+  });
+
+  test("compresses above the knee and never exceeds 1", () => {
+    expect(softKnee(1.2, 0.8)).toBeLessThan(1.2);
+    expect(softKnee(1.0, 0.8)).toBeLessThan(1);
+    expect(softKnee(10, 0.8)).toBeLessThanOrEqual(1);
+    expect(softKnee(1000, 0.8)).toBeLessThanOrEqual(1);
+  });
+});
+
 function frame(processor: SpectrumProcessor, level: number, dt = 1 / 60) {
   const data = new Uint8Array(1024).fill(level);
   return processor.process(data, dt);
 }
+
+// Tilt off in most processor tests so gravity/autoscale/floor are isolated.
+const FLAT: SpectrumConfig = { ...CFG, tiltDbPerOct: 0 };
 
 describe("SpectrumProcessor", () => {
   test("silence stays at zero", () => {
@@ -79,8 +108,26 @@ describe("SpectrumProcessor", () => {
     for (const v of out) expect(v).toBe(0);
   });
 
+  test("spectral tilt attenuates lows and lifts highs vs flat", () => {
+    const flat = new SpectrumProcessor({ ...FLAT, monstercat: 1, noiseFloor: 0 });
+    const tilted = new SpectrumProcessor({
+      ...CFG,
+      monstercat: 1,
+      noiseFloor: 0,
+      tiltDbPerOct: 3,
+    });
+    const a = [...frame(flat, 40)];
+    const b = [...frame(tilted, 40)];
+    expect(b[0]).toBeLessThan(a[0]); // ~50-65 Hz bar
+    expect(b[23]).toBeGreaterThan(a[23]); // ~10-12 kHz bar
+    // Gain ratio grows monotonically with frequency.
+    for (let i = 1; i < 24; i++) {
+      expect(b[i] / a[i]).toBeGreaterThan(b[i - 1] / a[i - 1]);
+    }
+  });
+
   test("rise is instant, fall is gravity-accelerated", () => {
-    const p = new SpectrumProcessor({ ...CFG, monstercat: 1, noiseFloor: 0 });
+    const p = new SpectrumProcessor({ ...FLAT, monstercat: 1, noiseFloor: 0 });
     const loud = frame(p, 255);
     const peak = loud[0];
     expect(peak).toBeGreaterThan(0.9);
@@ -101,24 +148,48 @@ describe("SpectrumProcessor", () => {
   });
 
   test("sensitivity autoscale fills the range on quiet input", () => {
-    const p = new SpectrumProcessor({ ...CFG, monstercat: 1, noiseFloor: 0 });
+    const p = new SpectrumProcessor({ ...FLAT, monstercat: 1, noiseFloor: 0 });
     let max = 0;
     for (let i = 0; i < 600; i++) {
       const out = frame(p, 40); // quiet but present
       max = Math.max(...out);
     }
-    expect(max).toBeGreaterThan(0.8);
+    // Autoscale sawtooths below the knee start (decay is faster than
+    // growth) rather than pinning at 1.
+    expect(max).toBeGreaterThan(0.6);
   });
 
   test("no bar ever exceeds 1 even after quiet-boosted sens meets loud input", () => {
-    const p = new SpectrumProcessor({ ...CFG, monstercat: 1, noiseFloor: 0 });
+    const p = new SpectrumProcessor({ ...FLAT, monstercat: 1, noiseFloor: 0 });
     for (let i = 0; i < 600; i++) frame(p, 40);
     const out = frame(p, 255);
     for (const v of out) expect(v).toBeLessThanOrEqual(1);
   });
 
+  test("a single hot bar does not pull the whole spectrum's gain down", () => {
+    const p = new SpectrumProcessor({ ...FLAT, monstercat: 1, noiseFloor: 0 });
+    // Only bar 0's bins are loud; every other bar is silent.
+    const data = new Uint8Array(1024);
+    const ranges = computeBinRanges(FLAT);
+    for (let b = ranges[0][0]; b < ranges[0][1]; b++) data[b] = 255;
+    for (let i = 0; i < 600; i++) p.process(data, 1 / 60);
+    // Sensitivity kept growing (one hot bar is below the >=2 threshold), so
+    // quiet broadband input still fills the display.
+    const out = frame(p, 40);
+    expect(Math.max(...out)).toBeGreaterThan(0.7);
+  });
+
+  test("setTuning changes tilt and floor without losing display state", () => {
+    const p = new SpectrumProcessor({ ...FLAT, monstercat: 1, noiseFloor: 0 });
+    frame(p, 255);
+    p.setTuning({ noiseFloor: 0.5, tiltDbPerOct: 3 });
+    // Display decays from its peak via gravity instead of snapping to zero.
+    const out = frame(p, 0);
+    expect(out[0]).toBeGreaterThan(0.9);
+  });
+
   test("noise floor zeroes sub-floor input", () => {
-    const p = new SpectrumProcessor({ ...CFG, monstercat: 1, noiseFloor: 0.1 });
+    const p = new SpectrumProcessor({ ...FLAT, monstercat: 1, noiseFloor: 0.1 });
     // level 10/255 ≈ 0.039 < 0.1 floor (sens starts at 1)
     const out = frame(p, 10);
     for (const v of out) expect(v).toBe(0);

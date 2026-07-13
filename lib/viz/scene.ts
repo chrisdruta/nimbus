@@ -17,6 +17,11 @@ export interface AudioFrame {
   beat: boolean;
   /** How far above threshold the onset was, 0..~1.5. */
   beatIntensity: number;
+  /**
+   * Confident tempo estimate with predicted beat phase, or null (the
+   * common case — ambient, DJ blends, sparse onsets).
+   */
+  tempo: import("./tempo").TempoEstimate | null;
   /** Seconds since last frame, clamped. */
   dt: number;
 }
@@ -27,6 +32,22 @@ export interface SceneContext {
   width: number;
   height: number;
   dpr: number;
+  /**
+   * Resolved visual settings for the active scene (lib/viz/settings.ts).
+   * Scenes read these per frame — live slider feedback — and each scene
+   * narrows to its own settings type. Absent in bare hosts (mini-viz).
+   */
+  settings?: unknown;
+  /**
+   * Whole-track lookahead: the provider waveform shape plus live playback
+   * position. shape is null until fetched (or forever, when the provider
+   * has none) — scenes must treat that as the normal case.
+   */
+  track?: {
+    shape: import("./trackshape").TrackShape | null;
+    positionSec: number;
+    durationSec: number;
+  };
 }
 
 export interface VizTheme {
@@ -41,13 +62,18 @@ export interface VizTheme {
   reducedMotion: boolean;
 }
 
-export type SceneId = "bars" | "radial" | "particles" | "scope";
+export type SceneId = "bars" | "ridge" | "waterfall" | "scope";
 
-export const SCENE_META: ReadonlyArray<{ id: SceneId; label: string }> = [
-  { id: "bars", label: "spectrum" },
-  { id: "radial", label: "orbit" },
-  { id: "particles", label: "drift" },
-  { id: "scope", label: "scope" },
+export const SCENE_META: ReadonlyArray<{
+  id: SceneId;
+  label: string;
+  /** CSS px cap on the canvas column; omit for full-bleed. */
+  maxWidth?: number;
+}> = [
+  { id: "bars", label: "spectrum", maxWidth: 1280 },
+  { id: "ridge", label: "ridgeline", maxWidth: 1280 },
+  { id: "waterfall", label: "waterfall" },
+  { id: "scope", label: "scope", maxWidth: 1100 },
 ];
 
 export function isSceneId(v: unknown): v is SceneId {

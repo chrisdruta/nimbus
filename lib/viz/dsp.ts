@@ -6,7 +6,24 @@
  * (already dB-mapped), not raw FFT magnitudes, so constants are re-tuned.
  */
 
-export interface SpectrumConfig {
+/**
+ * Scalar knobs that can change live without rebuilding the processor
+ * (bin ranges and buffers stay put).
+ */
+export interface SpectrumTuning {
+  /** Neighbor-lift decay base; <=1 disables. */
+  monstercat?: number;
+  /** Fall acceleration in value/s². */
+  gravity?: number;
+  /** Post-normalization cut for analyser noise. */
+  noiseFloor?: number;
+  /** Spectral tilt in dB/octave referenced to 1 kHz; >0 lifts highs. */
+  tiltDbPerOct?: number;
+  /** Where the soft-knee compressor starts bending (0..1). */
+  kneeStart?: number;
+}
+
+export interface SpectrumConfig extends SpectrumTuning {
   barCount: number;
   /** AudioContext.sampleRate. */
   sampleRate: number;
@@ -15,12 +32,6 @@ export interface SpectrumConfig {
   /** Band edges; audible content on SoundCloud MP3s lives well inside. */
   freqLow?: number;
   freqHigh?: number;
-  /** Neighbor-lift decay base; <=1 disables. */
-  monstercat?: number;
-  /** Fall acceleration in value/s². */
-  gravity?: number;
-  /** Post-normalization cut for analyser noise. */
-  noiseFloor?: number;
 }
 
 const DEFAULTS = {
@@ -29,6 +40,8 @@ const DEFAULTS = {
   monstercat: 1.5,
   gravity: 9,
   noiseFloor: 0.04,
+  tiltDbPerOct: 3,
+  kneeStart: 0.8,
 };
 
 /**
@@ -81,16 +94,31 @@ export function monstercatFilter(bars: Float32Array, strength: number): void {
 }
 
 /**
- * Stateful per-frame processor: aggregate → sensitivity autoscale →
- * noise floor → monstercat → gravity. Returns an internal buffer valid
- * until the next process() call.
+ * Soft-knee limiter: identity below the knee, tanh compression above —
+ * asymptotic to 1, never a hard flat top.
+ */
+export function softKnee(v: number, knee: number): number {
+  if (v <= knee) return v;
+  const span = 1 - knee;
+  // min() guards float rounding: knee + span·tanh can land a hair over 1.
+  return Math.min(1, knee + span * Math.tanh((v - knee) / span));
+}
+
+/**
+ * Stateful per-frame processor: aggregate → tilt → sensitivity autoscale
+ * with soft-knee → noise floor → monstercat → gravity. Returns an internal
+ * buffer valid until the next process() call.
  */
 export class SpectrumProcessor {
   private readonly ranges: Array<[number, number]>;
-  private readonly monstercat: number;
-  private readonly gravity: number;
-  private readonly noiseFloor: number;
+  private readonly hzPerBin: number;
+  private monstercat: number;
+  private gravity: number;
+  private noiseFloor: number;
+  private tiltDbPerOct: number;
+  private kneeStart: number;
 
+  private readonly tiltGain: Float32Array;
   private readonly live: Float32Array;
   private readonly display: Float32Array;
   private readonly fallSec: Float32Array;
@@ -99,37 +127,77 @@ export class SpectrumProcessor {
 
   constructor(cfg: SpectrumConfig) {
     this.ranges = computeBinRanges(cfg);
+    this.hzPerBin = cfg.sampleRate / cfg.fftSize;
     this.monstercat = cfg.monstercat ?? DEFAULTS.monstercat;
     this.gravity = cfg.gravity ?? DEFAULTS.gravity;
     this.noiseFloor = cfg.noiseFloor ?? DEFAULTS.noiseFloor;
+    this.tiltDbPerOct = cfg.tiltDbPerOct ?? DEFAULTS.tiltDbPerOct;
+    this.kneeStart = cfg.kneeStart ?? DEFAULTS.kneeStart;
+    this.tiltGain = new Float32Array(cfg.barCount);
     this.live = new Float32Array(cfg.barCount);
     this.display = new Float32Array(cfg.barCount);
     this.fallSec = new Float32Array(cfg.barCount);
     this.peakAtFall = new Float32Array(cfg.barCount);
+    this.retilt();
+  }
+
+  /** Autoscale gain — read/written to survive structural rebuilds. */
+  getSensitivity(): number {
+    return this.sens;
+  }
+
+  setSensitivity(v: number): void {
+    this.sens = v;
+  }
+
+  /** Update live-tunable scalars without losing gravity/sens state. */
+  setTuning(t: SpectrumTuning): void {
+    if (t.monstercat !== undefined) this.monstercat = t.monstercat;
+    if (t.gravity !== undefined) this.gravity = t.gravity;
+    if (t.noiseFloor !== undefined) this.noiseFloor = t.noiseFloor;
+    if (t.kneeStart !== undefined) this.kneeStart = t.kneeStart;
+    if (t.tiltDbPerOct !== undefined && t.tiltDbPerOct !== this.tiltDbPerOct) {
+      this.tiltDbPerOct = t.tiltDbPerOct;
+      this.retilt();
+    }
+  }
+
+  /** Per-bar gain from the range's geometric-center frequency vs 1 kHz. */
+  private retilt(): void {
+    for (let i = 0; i < this.ranges.length; i++) {
+      const [start, end] = this.ranges[i];
+      const fCenter = Math.sqrt(start * end) * this.hzPerBin;
+      const octaves = Math.log2(fCenter / 1000);
+      this.tiltGain[i] = Math.pow(10, (this.tiltDbPerOct * octaves) / 20);
+    }
   }
 
   process(freqData: Uint8Array, dtSec: number): Float32Array {
     const n = this.live.length;
 
-    // 1. Aggregate each bar's bin range.
+    // 1. Aggregate each bar's bin range, then tilt (bass sits below 1 kHz,
+    //    so a positive tilt attenuates it relative to mids/highs).
     for (let i = 0; i < n; i++) {
       const [start, end] = this.ranges[i];
       let sum = 0;
       for (let b = start; b < end; b++) sum += freqData[b] ?? 0;
-      this.live[i] = sum / (end - start) / 255;
+      this.live[i] = (sum / (end - start) / 255) * this.tiltGain[i];
     }
 
-    // 2. Sensitivity autoscale (cava): clip pulls back fast, recovery is
-    //    slow, so quiet tracks fill the range without loud ones strobing.
-    let clipped = false;
+    // 2. Sensitivity autoscale (cava) with a soft knee instead of a hard
+    //    clip: pull-back only engages when several bars run hot, so one
+    //    bass bar can't pump the whole spectrum's gain.
+    let hot = 0;
+    const knee = this.kneeStart;
     for (let i = 0; i < n; i++) {
       const v = this.live[i] * this.sens;
-      if (v > 1) clipped = true;
-      this.live[i] = Math.min(1, v);
+      if (v > knee) hot++;
+      this.live[i] = softKnee(v, knee);
     }
-    this.sens = clipped
-      ? Math.max(0.5, this.sens * 0.98)
-      : Math.min(8, this.sens * (1 + 0.4 * dtSec));
+    this.sens =
+      hot >= 2
+        ? Math.max(0.5, this.sens * 0.98)
+        : Math.min(6, this.sens * (1 + 0.15 * dtSec));
 
     // 3. Noise floor.
     const floor = this.noiseFloor;

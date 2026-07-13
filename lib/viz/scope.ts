@@ -26,8 +26,8 @@ export function findTrigger(w: Float32Array, searchLen: number): number {
 export class AutoGain {
   private gain = 1;
 
-  next(rms: number, dt: number): number {
-    const target = Math.min(10, Math.max(1, 0.35 / Math.max(rms, 1e-4)));
+  next(rms: number, dt: number, fill = 0.35): number {
+    const target = Math.min(10, Math.max(1, fill / Math.max(rms, 1e-4)));
     const tau = target < this.gain ? 0.12 : 0.4;
     const k = 1 - Math.exp(-dt / tau);
     this.gain += (target - this.gain) * k;

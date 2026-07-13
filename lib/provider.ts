@@ -92,6 +92,12 @@ export interface MusicProvider {
     cursor?: string,
   ): Promise<ProviderPage<ProviderFeedItem>>;
   resolveStream(accessToken: string, trackId: number): Promise<ProviderStream>;
+  /**
+   * Whole-track amplitude samples (arbitrary integer scale), or null when
+   * the provider has none. Deliberately a method, not a ProviderTrack
+   * field — lists shouldn't carry per-track waveform URLs around.
+   */
+  getWaveform(accessToken: string, trackId: number): Promise<number[] | null>;
 }
 
 export function getProvider(): MusicProvider {

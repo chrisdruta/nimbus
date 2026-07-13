@@ -4,6 +4,8 @@ import { useEffect, useRef } from "react";
 import { usePlayerRefs, usePlayerState } from "@/components/player/PlayerProvider";
 import { FrameAnalyzer } from "@/lib/viz/analyzer";
 import type { Scene, SceneContext, VizTheme } from "@/lib/viz/scene";
+import type { ResolvedDsp, SceneVisualSettings } from "@/lib/viz/settings";
+import type { TrackShape } from "@/lib/viz/trackshape";
 
 const FULL_BAR_COUNT = 64;
 
@@ -15,21 +17,45 @@ const FULL_BAR_COUNT = 64;
 export function SceneHost({
   scene,
   theme,
+  dsp,
+  visual,
+  trackShape,
   className = "",
 }: {
   scene: Scene;
   theme: VizTheme;
+  dsp?: ResolvedDsp;
+  visual?: SceneVisualSettings;
+  /** Whole-track lookahead shape for the current track (null while loading). */
+  trackShape?: { shape: TrackShape | null; durationMs: number };
   className?: string;
 }) {
-  const { analyserRef } = usePlayerRefs();
+  const { analyserRef, audioRef } = usePlayerRefs();
   const { playing } = usePlayerState();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyzerRef = useRef<FrameAnalyzer | null>(null);
   const sceneRef = useRef(scene);
   const themeRef = useRef(theme);
   const playingRef = useRef(playing);
+  const visualRef = useRef(visual);
+  const dspRef = useRef(dsp);
+  const trackShapeRef = useRef(trackShape);
   themeRef.current = theme;
   playingRef.current = playing;
+  visualRef.current = visual;
+  dspRef.current = dsp;
+  trackShapeRef.current = trackShape;
+
+  // Settings flow into the persistent analyzer; it rebuilds internally
+  // only when a structural value actually changed. (First application
+  // happens where the analyzer is created, below.)
+  useEffect(() => {
+    if (!dsp) return;
+    const analyzer = analyzerRef.current;
+    if (!analyzer) return;
+    analyzer.setStructure(dsp);
+    analyzer.setDsp(dsp.tuning);
+  }, [dsp]);
 
   // Scene lifecycle: init/dispose on swap; the rAF loop reads sceneRef.
   useEffect(() => {
@@ -53,10 +79,16 @@ export function SceneHost({
     const g = canvas?.getContext("2d");
     if (!canvas || !g) return;
 
-    analyzerRef.current ??= new FrameAnalyzer({
-      barCount: FULL_BAR_COUNT,
-      wantWaveform: true,
-    });
+    if (!analyzerRef.current) {
+      analyzerRef.current = new FrameAnalyzer({
+        barCount: dspRef.current?.barCount ?? FULL_BAR_COUNT,
+        wantWaveform: true,
+      });
+      if (dspRef.current) {
+        analyzerRef.current.setStructure(dspRef.current);
+        analyzerRef.current.setDsp(dspRef.current.tuning);
+      }
+    }
     const analyzer = analyzerRef.current;
 
     const sc: SceneContext = {
@@ -106,8 +138,18 @@ export function SceneHost({
       if (reducedMotion) {
         frame.beat = false;
         frame.beatIntensity = 0;
+        frame.tempo = null;
       }
       const t = { ...themeRef.current, reducedMotion };
+      sc.settings = visualRef.current;
+      const ts = trackShapeRef.current;
+      sc.track = ts
+        ? {
+            shape: ts.shape,
+            positionSec: audioRef.current?.currentTime ?? 0,
+            durationSec: ts.durationMs / 1000,
+          }
+        : undefined;
       sceneRef.current.frame(sc, frame, t, nowMs / 1000 - startSec);
     };
     raf = requestAnimationFrame(draw);
@@ -123,7 +165,7 @@ export function SceneHost({
       observer.disconnect();
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [analyserRef]);
+  }, [analyserRef, audioRef]);
 
   return <canvas ref={canvasRef} className={className} />;
 }

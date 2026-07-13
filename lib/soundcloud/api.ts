@@ -222,6 +222,7 @@ interface ScTrack {
   permalink_url: string;
   streamable: boolean | null;
   access?: string; // "playable" | "preview" | "blocked" on newer responses
+  waveform_url?: string | null; // PNG on wave.sndcdn.com; .json sibling exists
   user: ScUser;
 }
 
@@ -370,6 +371,59 @@ export async function getFeedPage(
     items: page.items.filter((i): i is ProviderFeedItem => i !== null),
     nextCursor: page.nextCursor,
   };
+}
+
+/** The .json sibling of the waveform PNG: samples on a 0..height scale. */
+interface ScWaveform {
+  height?: number;
+  samples?: number[];
+}
+
+/**
+ * Whole-track amplitude envelope. The public API serializes waveform_url
+ * as a PNG on the sndcdn waveform CDN; swapping the extension yields JSON
+ * ({width, height, samples}). That variant is undocumented, so absolutely
+ * everything degrades to null rather than throwing.
+ */
+export async function getWaveform(
+  accessToken: string,
+  trackId: number,
+): Promise<number[] | null> {
+  let track: ScTrack;
+  try {
+    track = (await scFetch(`/tracks/${trackId}`, accessToken)) as ScTrack;
+  } catch (err) {
+    if (err instanceof ProviderAuthError) throw err;
+    return null;
+  }
+  if (!track.waveform_url) return null;
+
+  let jsonUrl: string;
+  try {
+    jsonUrl = checkedHttpsUrl(
+      track.waveform_url.replace(/\.png$/, ".json"),
+      (host) => host === "sndcdn.com" || host.endsWith(".sndcdn.com"),
+    );
+  } catch {
+    return null;
+  }
+  if (!jsonUrl.endsWith(".json")) return null;
+
+  try {
+    // Plain CDN fetch — no auth header leaves the API origin.
+    const res = await fetch(jsonUrl, {
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as ScWaveform;
+    if (!Array.isArray(data.samples) || data.samples.length === 0) return null;
+    if (!data.samples.every((s) => typeof s === "number" && Number.isFinite(s))) {
+      return null;
+    }
+    return data.samples;
+  } catch {
+    return null;
+  }
 }
 
 interface ScStreams {

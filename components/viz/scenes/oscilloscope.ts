@@ -1,5 +1,7 @@
 import type { AudioFrame, Scene, SceneContext, VizTheme } from "@/lib/viz/scene";
 import { AutoGain, findTrigger } from "@/lib/viz/scope";
+import { SETTINGS_DEFAULTS, type ScopeSettings } from "@/lib/viz/settings";
+import { beatPulse } from "@/lib/viz/tempo";
 
 const WINDOW = 1024;
 const TRIGGER_SEARCH = 512;
@@ -9,6 +11,7 @@ export function createOscilloscopeScene(): Scene {
   const autoGain = new AutoGain();
   let beatWiden = 0;
   let firstFrame = true;
+  let prevPhase: number | null = null;
 
   return {
     id: "scope",
@@ -21,6 +24,7 @@ export function createOscilloscopeScene(): Scene {
     },
     frame(sc: SceneContext, f: AudioFrame, theme: VizTheme) {
       const { g, width, height, dpr } = sc;
+      const s = (sc.settings as ScopeSettings | undefined) ?? SETTINGS_DEFAULTS.scope;
       const cy = height / 2;
       const [r, gr, b] = theme.accentRgb;
 
@@ -30,7 +34,7 @@ export function createOscilloscopeScene(): Scene {
         g.clearRect(0, 0, width, height);
       } else {
         g.globalCompositeOperation = "destination-out";
-        g.fillStyle = "rgba(0, 0, 0, 0.35)";
+        g.fillStyle = `rgba(0, 0, 0, ${Math.max(0.08, 1 - s.trail)})`;
         g.fillRect(0, 0, width, height);
         g.globalCompositeOperation = "source-over";
       }
@@ -50,9 +54,11 @@ export function createOscilloscopeScene(): Scene {
         sumSq += s * s;
       }
       const rms = Math.sqrt(sumSq / WINDOW);
-      const gain = autoGain.next(rms, f.dt);
+      const gain = autoGain.next(rms, f.dt, s.gainTarget);
 
-      if (f.beat) beatWiden = Math.min(1, beatWiden + 0.5 * f.beatIntensity);
+      const pulse = beatPulse(f, prevPhase);
+      prevPhase = pulse.phase;
+      if (pulse.fire) beatWiden = Math.min(1, beatWiden + 0.5 * pulse.intensity);
       beatWiden *= Math.exp(-f.dt / 0.12);
 
       const path = new Path2D();
@@ -65,21 +71,24 @@ export function createOscilloscopeScene(): Scene {
         else path.lineTo(x, y);
       }
 
-      // Layered glow — far cheaper than shadowBlur.
+      // Layered glow — far cheaper than shadowBlur. Strength scales with
+      // the glow setting; zero skips the halo passes entirely.
       g.lineJoin = "round";
       g.lineCap = "round";
-      g.strokeStyle = `rgba(${r}, ${gr}, ${b}, 0.12)`;
-      g.lineWidth = 9 * dpr;
-      g.stroke(path);
-      g.strokeStyle = `rgba(${r}, ${gr}, ${b}, 0.35)`;
-      g.lineWidth = 4 * dpr;
-      g.stroke(path);
+      if (s.glow > 0.01) {
+        g.strokeStyle = `rgba(${r}, ${gr}, ${b}, ${0.2 * s.glow})`;
+        g.lineWidth = 9 * dpr * (0.6 + 0.7 * s.glow);
+        g.stroke(path);
+        g.strokeStyle = `rgba(${r}, ${gr}, ${b}, ${0.58 * s.glow})`;
+        g.lineWidth = 4 * dpr;
+        g.stroke(path);
+      }
       // Core: accent lightened toward white.
       const cr = Math.round(r + (255 - r) * 0.35);
       const cg = Math.round(gr + (255 - gr) * 0.35);
       const cb = Math.round(b + (255 - b) * 0.35);
       g.strokeStyle = `rgb(${cr}, ${cg}, ${cb})`;
-      g.lineWidth = 1.75 * dpr * (1 + 0.5 * beatWiden);
+      g.lineWidth = s.lineWeight * dpr * (1 + 0.5 * beatWiden);
       g.stroke(path);
     },
     dispose() {},

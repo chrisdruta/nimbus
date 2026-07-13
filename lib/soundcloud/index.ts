@@ -7,6 +7,7 @@ import {
   getPlaylists,
   getPlaylistTracks,
   getRelatedTracks,
+  getWaveform,
   resolveStream,
 } from "./api";
 
@@ -21,4 +22,5 @@ export const soundcloudProvider: MusicProvider = {
   getRelatedTracks,
   getFeedPage,
   resolveStream,
+  getWaveform,
 };
