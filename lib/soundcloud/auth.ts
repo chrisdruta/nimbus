@@ -48,6 +48,7 @@ async function tokenRequest(
       Accept: "application/json; charset=utf-8",
     },
     body,
+    signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) {
     // The response body may echo request params; never log it wholesale.

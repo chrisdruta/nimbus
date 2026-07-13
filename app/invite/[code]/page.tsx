@@ -2,6 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getClaimableInvite } from "@/lib/invites";
 import { readSession } from "@/lib/session";
+import { headers } from "next/headers";
+import { consumeRateLimit, RateLimitError, requestIp } from "@/lib/rate-limit";
 
 export default async function InvitePage({
   params,
@@ -12,7 +14,15 @@ export default async function InvitePage({
   if (session) redirect("/library");
 
   const { code } = await params;
-  const invite = await getClaimableInvite(code);
+  let invite = null;
+  try {
+    consumeRateLimit(`invite:${requestIp(await headers())}`, 60, 10 * 60_000);
+    if (/^[A-Za-z0-9_-]{22}$/.test(code)) {
+      invite = await getClaimableInvite(code);
+    }
+  } catch (err) {
+    if (!(err instanceof RateLimitError)) throw err;
+  }
 
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center gap-8 px-6">

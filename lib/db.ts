@@ -129,10 +129,15 @@ export async function updateUserProfile(
 /** Slim membership check run on every authed request. */
 export async function getUserAuth(
   id: number,
-): Promise<{ id: number; disabled: boolean } | null> {
-  const rows = await sql()`SELECT id, disabled FROM users WHERE id = ${id}`;
+): Promise<{ id: number; scUserId: number; disabled: boolean } | null> {
+  const rows =
+    await sql()`SELECT id, sc_user_id, disabled FROM users WHERE id = ${id}`;
   return rows[0]
-    ? { id: Number(rows[0].id), disabled: Boolean(rows[0].disabled) }
+    ? {
+        id: Number(rows[0].id),
+        scUserId: Number(rows[0].sc_user_id),
+        disabled: Boolean(rows[0].disabled),
+      }
     : null;
 }
 
@@ -147,7 +152,9 @@ export interface UserWithUsage {
   today_count: number;
 }
 
-export async function listUsersWithUsage(day: string): Promise<UserWithUsage[]> {
+export async function listUsersWithUsage(
+  day: string,
+): Promise<UserWithUsage[]> {
   const rows = await sql()`
     SELECT u.id, u.sc_user_id, u.sc_permalink, u.sc_username, u.avatar_url,
            u.disabled, u.created_at, COALESCE(pc.count, 0) AS today_count

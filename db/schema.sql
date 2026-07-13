@@ -29,7 +29,9 @@ CREATE TABLE IF NOT EXISTS invites (
   used_by    bigint REFERENCES users(id) ON DELETE SET NULL
 );
 
--- Stream starts per user per UTC day. Global usage for a day is SUM(count) —
+-- Stream-resolution attempts per user per UTC day. Failed/unavailable tracks
+-- count too, preventing unlimited provider calls through refund loops.
+-- Global usage for a day is SUM(count) —
 -- a single global counter row would serialize every play in the app.
 CREATE TABLE IF NOT EXISTS play_counts (
   user_id bigint  NOT NULL REFERENCES users(id) ON DELETE CASCADE,

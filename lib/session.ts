@@ -27,7 +27,11 @@ export class ForbiddenError extends Error {}
 function secret(): Uint8Array {
   const raw = process.env.SESSION_SECRET;
   if (!raw) throw new Error("SESSION_SECRET is not set");
-  return new TextEncoder().encode(raw);
+  const encoded = new TextEncoder().encode(raw);
+  if (encoded.length < 32) {
+    throw new Error("SESSION_SECRET must be at least 32 bytes");
+  }
+  return encoded;
 }
 
 // Secure cookies would be dropped on plain-http origins other than localhost;
@@ -36,17 +40,37 @@ function secureCookies(): boolean {
   return (process.env.APP_URL ?? "").startsWith("https:");
 }
 
-async function sign(payload: Record<string, unknown>, ttlSeconds: number) {
-  return new SignJWT(payload)
-    .setProtectedHeader({ alg: "HS256" })
+type TokenKind = "session" | "oauth";
+
+function cookieName(base: string, prefix: "__Host-" | "__Secure-"): string {
+  return secureCookies() ? `${prefix}${base}` : base;
+}
+
+async function sign(
+  payload: Record<string, unknown>,
+  ttlSeconds: number,
+  kind: TokenKind,
+) {
+  return new SignJWT({ ...payload, kind })
+    .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+    .setIssuer("nimbus")
+    .setAudience(`nimbus:${kind}`)
     .setIssuedAt()
     .setExpirationTime(`${ttlSeconds}s`)
     .sign(secret());
 }
 
-async function verify(token: string): Promise<Record<string, unknown> | null> {
+async function verify(
+  token: string,
+  kind: TokenKind,
+): Promise<Record<string, unknown> | null> {
   try {
-    const { payload } = await jwtVerify(token, secret());
+    const { payload } = await jwtVerify(token, secret(), {
+      algorithms: ["HS256"],
+      issuer: "nimbus",
+      audience: `nimbus:${kind}`,
+    });
+    if (payload.kind !== kind) return null;
     return payload;
   } catch {
     return null;
@@ -55,20 +79,24 @@ async function verify(token: string): Promise<Record<string, unknown> | null> {
 
 export async function createSession(session: Session): Promise<void> {
   const jar = await cookies();
-  jar.set(SESSION_COOKIE, await sign({ ...session }, SESSION_TTL_S), {
-    httpOnly: true,
-    secure: secureCookies(),
-    sameSite: "lax",
-    path: "/",
-    maxAge: SESSION_TTL_S,
-  });
+  jar.set(
+    cookieName(SESSION_COOKIE, "__Host-"),
+    await sign({ ...session }, SESSION_TTL_S, "session"),
+    {
+      httpOnly: true,
+      secure: secureCookies(),
+      sameSite: "lax",
+      path: "/",
+      maxAge: SESSION_TTL_S,
+    },
+  );
 }
 
 export async function readSession(): Promise<Session | null> {
   const jar = await cookies();
-  const token = jar.get(SESSION_COOKIE)?.value;
+  const token = jar.get(cookieName(SESSION_COOKIE, "__Host-"))?.value;
   if (!token) return null;
-  const payload = await verify(token);
+  const payload = await verify(token, "session");
   if (
     typeof payload?.userId !== "number" ||
     typeof payload?.scUserId !== "number"
@@ -79,26 +107,34 @@ export async function readSession(): Promise<Session | null> {
 }
 
 export async function clearSession(): Promise<void> {
-  (await cookies()).delete(SESSION_COOKIE);
+  const jar = await cookies();
+  jar.delete(cookieName(SESSION_COOKIE, "__Host-"));
+  // Remove the pre-hardening cookie after rollout as well.
+  if (secureCookies()) jar.delete(SESSION_COOKIE);
 }
 
 export async function setDanceCookie(dance: OauthDance): Promise<void> {
   const jar = await cookies();
-  jar.set(DANCE_COOKIE, await sign({ ...dance }, DANCE_TTL_S), {
-    httpOnly: true,
-    secure: secureCookies(),
-    sameSite: "lax",
-    path: "/api/auth",
-    maxAge: DANCE_TTL_S,
-  });
+  jar.set(
+    cookieName(DANCE_COOKIE, "__Secure-"),
+    await sign({ ...dance }, DANCE_TTL_S, "oauth"),
+    {
+      httpOnly: true,
+      secure: secureCookies(),
+      sameSite: "lax",
+      path: "/api/auth",
+      maxAge: DANCE_TTL_S,
+    },
+  );
 }
 
 export async function readAndClearDanceCookie(): Promise<OauthDance | null> {
   const jar = await cookies();
-  const token = jar.get(DANCE_COOKIE)?.value;
-  jar.delete({ name: DANCE_COOKIE, path: "/api/auth" });
+  const name = cookieName(DANCE_COOKIE, "__Secure-");
+  const token = jar.get(name)?.value;
+  jar.delete({ name, path: "/api/auth" });
   if (!token) return null;
-  const payload = await verify(token);
+  const payload = await verify(token, "oauth");
   if (
     typeof payload?.state !== "string" ||
     typeof payload?.codeVerifier !== "string"
@@ -128,6 +164,9 @@ export async function requireUser(): Promise<Session> {
   const membership = await getUserAuth(session.userId);
   if (!membership) throw new UnauthorizedError("user removed");
   if (membership.disabled) throw new ForbiddenError("account disabled");
+  if (membership.scUserId !== session.scUserId) {
+    throw new UnauthorizedError("session identity mismatch");
+  }
   return session;
 }
 

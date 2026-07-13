@@ -3,6 +3,7 @@ import {
   withUser,
   BadRequestError,
   NotFoundError,
+  positiveSafeInteger,
 } from "@/lib/route-helpers";
 import { getSlipstream } from "@/lib/slipstream-store";
 
@@ -16,10 +17,7 @@ export async function GET(
 ) {
   const { userId } = await params;
   return withUser(async (session) => {
-    const hostId = Number(userId);
-    if (!Number.isInteger(hostId) || hostId <= 0) {
-      throw new BadRequestError(`bad user id: ${userId}`);
-    }
+    const hostId = positiveSafeInteger(userId, "user id");
     if (hostId === session.userId) {
       throw new BadRequestError("that's your own slipstream");
     }

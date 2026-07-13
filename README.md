@@ -13,23 +13,25 @@ always credit and link back to their creator and SoundCloud.
 
 ## Features
 
-- **Sign in with SoundCloud** (OAuth 2.1 + PKCE). Tokens are AES-256-GCM
-  encrypted in Postgres; the backend brokers JSON only — audio streams
-  **directly from the SoundCloud CDN**, never through the app.
+- **Sign in with SoundCloud** (OAuth 2.1 + PKCE). Tokens are versioned
+  AES-256-GCM ciphertext bound to the user and token type, with rolling key
+  rotation support. The backend brokers JSON only — audio streams **directly
+  from the SoundCloud CDN**, never through the app. AAC HLS uses hls.js where
+  the browser lacks native playback.
 - **Your library**: likes and playlists, cursor-paginated with infinite
   scroll, artwork-tinted headers, the signature chip tiles.
 - **A queue you own**: seeded Fisher–Yates shuffle, persisted
   order/position/history across reloads, repeat off/all/one,
   history-aware prev, auto-skip of unstreamable tracks.
-- **Shuffle modes**: *classic*, *artist-spaced* (no artist back-to-back),
-  and *rediscovery* (surfaces rarely/never-played tracks, powered by your
+- **Shuffle modes**: _classic_, _artist-spaced_ (no artist back-to-back),
+  and _rediscovery_ (surfaces rarely/never-played tracks, powered by your
   per-track play history).
 - **Slipstream**: a live "listening now" feed of what members are playing;
   join someone's slipstream to hear what they hear, position-synced and
   read-only. Your own queue parks untouched and every listener streams
   through their own account — leave and you're back exactly where you were.
-- **Visualizations**: four fullscreen scenes — *spectrum*, *orbit*,
-  *drift*, *scope* — switchable with ←/→ or 1–4, tinted from the track
+- **Visualizations**: four fullscreen scenes — _spectrum_, _orbit_,
+  _drift_, _scope_ — switchable with ←/→ or 1–4, tinted from the track
   artwork, beat-reactive via onset detection. All bars run through a
   TypeScript port of [cava](https://github.com/karlstav/cava)'s smoothing
   (MIT, attributed in `lib/viz/dsp.ts`) — buttery motion, not raw FFT

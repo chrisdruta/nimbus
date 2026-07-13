@@ -67,9 +67,10 @@ interface and types from `lib/provider.ts`. UI and API routes must never
 depend on raw provider responses — this seam is what makes a future provider
 swap an env-var-and-one-directory change.
 
-**Auth model.** OAuth 2.1 + PKCE; PKCE state (and any invite code) rides the
-signed, short-lived `nimbus_oauth` cookie — never the SoundCloud redirect.
-Sessions are 7-day jose JWTs, but `requireUser()` (`lib/session.ts`) is
+**Auth model.** OAuth 2.1 + PKCE; PKCE state (and any invite code) rides a
+signed, short-lived HttpOnly cookie — never the SoundCloud redirect. Production
+cookies use `__Host-`/`__Secure-` prefixes. Sessions are typed, issuer/audience-
+bound 7-day jose JWTs, but `requireUser()` (`lib/session.ts`) is
 DB-backed per request so disabling/removing a user cuts them off on their next
 call. `OWNER_SC_USER_ID` identifies the owner/admin (there is no role column);
 membership otherwise comes from single-use invites claimed atomically under a
@@ -77,17 +78,19 @@ row lock (`lib/invites.ts`). API routes wrap handlers in `withUser`/`withAdmin`
 (`lib/route-helpers.ts`), which own the error→status vocabulary (401/403/400/
 422/429); throw the typed errors, don't hand-roll responses.
 
-**Tokens at rest.** AES-256-GCM blobs in Neon (`lib/crypto.ts`). SoundCloud
+**Tokens at rest.** Versioned AES-256-GCM blobs in Neon (`lib/crypto.ts`), with
+user/token-type AAD and a previous-key rotation window. SoundCloud
 refresh tokens are single-use, so rotation serializes under a `FOR UPDATE`
 row lock in `lib/tokens.ts` — copy that transaction pattern (via `getPool()`)
 for any multi-statement write; use the `sql()` Neon HTTP one-shot for
 everything else. No ORM; Postgres bigints arrive as strings — `Number()` them
 at the row-mapping boundary.
 
-**Quotas.** `/api/tracks/[id]/play` calls `consumePlayStart` *before* the
-provider (one atomic INSERT…ON CONFLICT statement in `lib/quota.ts`) and
-refunds on failure, so an over-cap user never consumes real SoundCloud budget
-and failed resolutions don't drain quota. The per-user guard is exact; the
+**Quotas.** `POST /api/tracks/[id]/play` calls `consumePlayStart` _before_ the
+provider (one atomic INSERT…ON CONFLICT statement in `lib/quota.ts`). Every
+resolution attempt counts, including unavailable tracks, so invalid-track
+loops cannot become an unlimited provider request oracle. The client stops
+after five consecutive failures. The per-user guard is exact; the
 global guard is deliberately approximate under concurrency — the headroom
 between `app_settings.global_daily_play_limit` (default 12,000) and
 SoundCloud's 15,000/day client cap absorbs it. Do not "fix" this with a global
@@ -120,7 +123,8 @@ are separate contexts. Components fetch API routes with plain `fetch` on mount
 and refetch after mutations — no data library, no UI component library
 (popovers/menus are hand-rolled). Tailwind v4 design tokens are CSS variables
 in `app/globals.css` (`--color-accent` #ff4200 etc.); lowercase, understated
-chrome is the house style. localStorage uses versioned/validated payloads
+chrome is the house style. localStorage uses per-authenticated-user,
+versioned/validated payloads
 (`lib/queue.ts` persistence, `lib/prefs.ts`) with backfill for missing fields.
 
 **Infra is settled.** Neon + polling is the chosen stack and slipstream

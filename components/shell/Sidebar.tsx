@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { SidebarPlaylists } from "./SidebarPlaylists";
 import { IconCloud } from "@/components/ui/icons";
-import { writePref } from "@/lib/prefs";
 
 interface Me {
   id: number;
@@ -24,9 +23,6 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       .then((r) => (r.ok ? r.json() : null))
       .then((m: Me | null) => {
         setMe(m);
-        // The library cache (lib/library-cache.ts) is keyed by user id;
-        // persist it so the next session can hydrate before /api/me lands.
-        if (m && typeof m.id === "number") writePref("me", { userId: m.id });
       })
       .catch(() => {});
   }, []);

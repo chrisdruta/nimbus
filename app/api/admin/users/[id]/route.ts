@@ -1,13 +1,18 @@
 import { type NextRequest } from "next/server";
-import { withAdmin, BadRequestError } from "@/lib/route-helpers";
+import {
+  withAdmin,
+  BadRequestError,
+  positiveSafeInteger,
+  readJsonBody,
+  requireSameOrigin,
+} from "@/lib/route-helpers";
 import { deleteUser, getUserById, setUserDisabled } from "@/lib/db";
 import { isOwner } from "@/lib/session";
 
 export const runtime = "nodejs";
 
 async function targetUser(id: string) {
-  const userId = Number(id);
-  if (!Number.isInteger(userId)) throw new BadRequestError(`bad user id: ${id}`);
+  const userId = positiveSafeInteger(id, "user id");
   const user = await getUserById(userId);
   if (!user) throw new BadRequestError("no such user");
   if (isOwner(user.sc_user_id)) {
@@ -22,7 +27,8 @@ export async function PATCH(
 ) {
   const { id } = await params;
   return withAdmin(async () => {
-    const body = (await req.json().catch(() => null)) as {
+    requireSameOrigin(req);
+    const body = (await readJsonBody(req)) as {
       disabled?: unknown;
     } | null;
     if (typeof body?.disabled !== "boolean") {
@@ -35,11 +41,12 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
   return withAdmin(async () => {
+    requireSameOrigin(req);
     const user = await targetUser(id);
     await deleteUser(user.id);
     return { id: user.id, deleted: true };

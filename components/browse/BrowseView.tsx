@@ -1,8 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLibrary, sourceKey, type TrackSource } from "@/lib/hooks/useLibrary";
-import { usePlayerActions, usePlayerState } from "@/components/player/PlayerProvider";
+import {
+  useLibrary,
+  sourceKey,
+  type TrackSource,
+} from "@/lib/hooks/useLibrary";
+import {
+  usePlayerActions,
+  usePlayerState,
+} from "@/components/player/PlayerProvider";
 import { HeaderBand } from "./HeaderBand";
 import { TrackTile } from "./TrackTile";
 import { TileSkeleton } from "./TileSkeleton";
@@ -10,6 +17,7 @@ import { EmptyState } from "./EmptyState";
 import { IconPlay, IconShuffle } from "@/components/ui/icons";
 import { artworkSized } from "@/lib/artwork";
 import { currentTrackId } from "@/lib/queue";
+import { useAuthenticatedUserId } from "@/components/auth/AuthenticatedUser";
 
 const WINDOW_STEP = 50;
 
@@ -22,9 +30,12 @@ export function BrowseView({
   title: string;
   subtitle?: string;
 }) {
+  const userId = useAuthenticatedUserId();
   const key = sourceKey(source);
-  const { tracks, complete, loading, error, unauthorized, retry } =
-    useLibrary(source);
+  const { tracks, complete, loading, error, unauthorized, retry } = useLibrary(
+    source,
+    userId,
+  );
   const actions = usePlayerActions();
   const { queue } = usePlayerState();
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -121,7 +132,9 @@ export function BrowseView({
             <button
               aria-label="shuffle all"
               title="shuffle all"
-              onClick={() => actions.playFrom(key, tracks, undefined, { shuffle: true })}
+              onClick={() =>
+                actions.playFrom(key, tracks, undefined, { shuffle: true })
+              }
               disabled={playableCount === 0}
               className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-accent text-white transition hover:scale-105 disabled:cursor-default disabled:opacity-40"
             >
@@ -152,7 +165,9 @@ export function BrowseView({
         actions={
           <>
             <button
-              onClick={() => actions.playFrom(key, tracks, undefined, { shuffle: true })}
+              onClick={() =>
+                actions.playFrom(key, tracks, undefined, { shuffle: true })
+              }
               disabled={playableCount === 0}
               className="flex cursor-pointer items-center gap-2 rounded-full bg-accent px-5 py-2 text-sm font-medium text-white transition hover:scale-105 disabled:cursor-default disabled:opacity-40"
             >

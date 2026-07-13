@@ -13,6 +13,7 @@ const API_URL = "https://api.soundcloud.com";
 const MAX_ATTEMPTS = 3;
 const BACKOFF_BASE_MS = 250;
 const RETRY_AFTER_CAP_MS = 2000;
+const REQUEST_TIMEOUT_MS = 10_000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -32,12 +33,61 @@ function apiUrl(pathOrUrl: string): string {
   return pathOrUrl;
 }
 
+function isSoundCloudWebHost(hostname: string): boolean {
+  return hostname === "soundcloud.com" || hostname.endsWith(".soundcloud.com");
+}
+
+function isMediaHost(hostname: string): boolean {
+  return (
+    hostname === "sndcdn.com" ||
+    hostname.endsWith(".sndcdn.com") ||
+    hostname === "soundcloud.cloud" ||
+    hostname.endsWith(".soundcloud.cloud")
+  );
+}
+
+function checkedHttpsUrl(
+  value: string,
+  allowed: (host: string) => boolean,
+): string {
+  const url = new URL(value);
+  if (url.protocol !== "https:" || !allowed(url.hostname)) {
+    throw new Error("refusing untrusted SoundCloud response URL");
+  }
+  return url.toString();
+}
+
+function webUrl(value: string | undefined): string {
+  try {
+    return value
+      ? checkedHttpsUrl(value, isSoundCloudWebHost)
+      : "https://soundcloud.com";
+  } catch {
+    return "https://soundcloud.com";
+  }
+}
+
+function artworkUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    return checkedHttpsUrl(
+      value,
+      (host) => host === "sndcdn.com" || host.endsWith(".sndcdn.com"),
+    );
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Docs specify `Authorization: OAuth <token>` (confirmed working); keep the
  * one-shot Bearer fallback in case that ever flips. Retries transient
  * failures (429/5xx/network) with jittered backoff, honoring Retry-After.
  */
-async function scFetch(pathOrUrl: string, accessToken: string): Promise<unknown> {
+async function scFetch(
+  pathOrUrl: string,
+  accessToken: string,
+): Promise<unknown> {
   const url = apiUrl(pathOrUrl);
   const accept = { Accept: "application/json; charset=utf-8" };
   let lastFailure = "";
@@ -47,10 +97,12 @@ async function scFetch(pathOrUrl: string, accessToken: string): Promise<unknown>
     try {
       res = await fetch(url, {
         headers: { ...accept, Authorization: `OAuth ${accessToken}` },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
       if (res.status === 401) {
         res = await fetch(url, {
           headers: { ...accept, Authorization: `Bearer ${accessToken}` },
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
         if (res.status === 401) {
           throw new ProviderAuthError("SoundCloud rejected the access token");
@@ -65,7 +117,9 @@ async function scFetch(pathOrUrl: string, accessToken: string): Promise<unknown>
     }
     if (attempt < MAX_ATTEMPTS - 1) await sleep(retryDelay(res, attempt));
   }
-  throw new Error(`SoundCloud API ${new URL(url).pathname} failed: ${lastFailure}`);
+  throw new Error(
+    `SoundCloud API ${new URL(url).pathname} failed: ${lastFailure}`,
+  );
 }
 
 /** Cursors are base64url-wrapped next_href URLs; apiUrl() re-validates the
@@ -115,9 +169,9 @@ function toTrack(t: ScTrack): ProviderTrack {
     id: t.id,
     title: t.title,
     artist: t.user?.username ?? "unknown",
-    artistUrl: t.user?.permalink_url ?? "",
-    artworkUrl: t.artwork_url,
-    permalinkUrl: t.permalink_url,
+    artistUrl: webUrl(t.user?.permalink_url),
+    artworkUrl: artworkUrl(t.artwork_url),
+    permalinkUrl: webUrl(t.permalink_url),
     durationMs: t.duration,
     streamable: (t.streamable ?? true) && t.access !== "blocked",
   };
@@ -128,8 +182,8 @@ function toPlaylist(p: ScPlaylist): ProviderPlaylist {
     id: p.id,
     title: p.title,
     trackCount: p.track_count,
-    artworkUrl: p.artwork_url,
-    permalinkUrl: p.permalink_url,
+    artworkUrl: artworkUrl(p.artwork_url),
+    permalinkUrl: webUrl(p.permalink_url),
     durationMs: p.duration,
   };
 }
@@ -152,8 +206,8 @@ export async function getMe(accessToken: string): Promise<ProviderUser> {
   return {
     id: me.id,
     username: me.username,
-    permalinkUrl: me.permalink_url,
-    avatarUrl: me.avatar_url ?? null,
+    permalinkUrl: webUrl(me.permalink_url),
+    avatarUrl: artworkUrl(me.avatar_url),
   };
 }
 
@@ -165,8 +219,7 @@ export async function getLikesPage(
     ? decodeCursor(cursor)
     : "/me/likes/tracks?limit=200&linked_partitioning=true";
   const data = (await scFetch(url, accessToken)) as
-    | ScPartitioned<ScTrack>
-    | ScTrack[];
+    ScPartitioned<ScTrack> | ScTrack[];
   return toPage(data, toTrack);
 }
 
@@ -178,8 +231,7 @@ export async function getPlaylists(
     ? decodeCursor(cursor)
     : "/me/playlists?limit=20&linked_partitioning=true&show_tracks=false";
   const data = (await scFetch(url, accessToken)) as
-    | ScPartitioned<ScPlaylist>
-    | ScPlaylist[];
+    ScPartitioned<ScPlaylist> | ScPlaylist[];
   return toPage(data, toPlaylist);
 }
 
@@ -192,12 +244,13 @@ export async function getPlaylistTracks(
     ? decodeCursor(cursor)
     : `/playlists/${playlistId}/tracks?limit=200&linked_partitioning=true`;
   const data = (await scFetch(url, accessToken)) as
-    | ScPartitioned<ScTrack>
-    | ScTrack[];
+    ScPartitioned<ScTrack> | ScTrack[];
   return toPage(data, toTrack);
 }
 
 interface ScStreams {
+  hls_aac_160_url?: string;
+  hls_aac_96_url?: string;
   http_mp3_128_url?: string;
   hls_mp3_128_url?: string;
   hls_opus_64_url?: string;
@@ -220,7 +273,12 @@ export async function resolveStream(
     throw new TrackUnavailableError(`streams lookup failed: ${err}`);
   }
   let picked: ProviderStream;
-  if (streams.http_mp3_128_url) {
+  if (streams.hls_aac_160_url ?? streams.hls_aac_96_url) {
+    picked = {
+      url: (streams.hls_aac_160_url ?? streams.hls_aac_96_url)!,
+      protocol: "hls",
+    };
+  } else if (streams.http_mp3_128_url) {
     picked = { url: streams.http_mp3_128_url, protocol: "progressive" };
   } else if (streams.hls_mp3_128_url ?? streams.hls_opus_64_url) {
     picked = {
@@ -237,19 +295,42 @@ export async function resolveStream(
   // which a media element can't send. Follow the authorized 302 here and hand
   // the browser the final signed CDN URL (CORS-enabled, auth in the query
   // signature) — the audio itself still flows browser -> CDN directly.
-  const res = await fetch(picked.url, {
+  const pickedUrl = new URL(picked.url);
+  if (pickedUrl.protocol !== "https:") {
+    throw new TrackUnavailableError("provider returned a non-HTTPS stream URL");
+  }
+  if (isMediaHost(pickedUrl.hostname)) {
+    return { url: pickedUrl.toString(), protocol: picked.protocol };
+  }
+  if (pickedUrl.origin !== API_URL) {
+    throw new TrackUnavailableError(
+      "provider returned an untrusted stream URL",
+    );
+  }
+
+  const res = await fetch(pickedUrl, {
     redirect: "manual",
     headers: { Authorization: `OAuth ${accessToken}` },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   void res.body?.cancel();
   const location = res.headers.get("location");
   if (res.status >= 300 && res.status < 400 && location) {
-    return {
-      url: new URL(location, picked.url).toString(),
-      protocol: picked.protocol,
-    };
+    try {
+      return {
+        url: checkedHttpsUrl(
+          new URL(location, pickedUrl).toString(),
+          isMediaHost,
+        ),
+        protocol: picked.protocol,
+      };
+    } catch {
+      throw new TrackUnavailableError(
+        "provider redirected to an untrusted host",
+      );
+    }
   }
-  if (res.ok) return picked; // already directly fetchable
+  if (res.ok) return { url: pickedUrl.toString(), protocol: picked.protocol };
   throw new TrackUnavailableError(
     `stream redirect resolution failed: ${res.status}`,
   );

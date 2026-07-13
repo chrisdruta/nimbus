@@ -36,7 +36,9 @@ describe("seededShuffle", () => {
     const input = [...IDS];
     const out = seededShuffle(input, 7);
     expect(input).toEqual(IDS);
-    expect([...out].sort((a, b) => a - b)).toEqual([...IDS].sort((a, b) => a - b));
+    expect([...out].sort((a, b) => a - b)).toEqual(
+      [...IDS].sort((a, b) => a - b),
+    );
   });
 });
 
@@ -235,6 +237,7 @@ describe("integrate", () => {
 });
 
 describe("persistence", () => {
+  const USER_ID = 7;
   // bun test runs without a DOM; stub the localStorage surface saveQueue uses.
   const store = new Map<string, string>();
   beforeEach(() => {
@@ -249,7 +252,10 @@ describe("persistence", () => {
   });
 
   test("round-trips state and snapshot", () => {
-    const q = createQueue("playlist:9", IDS, { shuffle: true, startTrackId: 20 });
+    const q = createQueue("playlist:9", IDS, {
+      shuffle: true,
+      startTrackId: 20,
+    });
     const snapshot = {
       id: 20,
       title: "t",
@@ -259,19 +265,26 @@ describe("persistence", () => {
       permalinkUrl: "",
       durationMs: 1000,
     };
-    saveQueue(q, snapshot);
-    const loaded = loadQueue();
+    saveQueue(USER_ID, q, snapshot);
+    const loaded = loadQueue(USER_ID);
     expect(loaded?.state).toEqual(q);
     expect(loaded?.currentTrack).toEqual(snapshot);
-    clearQueue();
-    expect(loadQueue()).toBeNull();
+    clearQueue(USER_ID);
+    expect(loadQueue(USER_ID)).toBeNull();
+  });
+
+  test("namespaces queues by authenticated user", () => {
+    const q = createQueue("likes", IDS);
+    saveQueue(USER_ID, q, null);
+    expect(loadQueue(USER_ID)?.state).toEqual(q);
+    expect(loadQueue(USER_ID + 1)).toBeNull();
   });
 
   test("rejects malformed payloads", () => {
-    store.set("nimbus.queue.v1", '{"state":{"sourceId":5}}');
-    expect(loadQueue()).toBeNull();
-    store.set("nimbus.queue.v1", "not json");
-    expect(loadQueue()).toBeNull();
+    store.set(`nimbus.queue.v1:${USER_ID}`, '{"state":{"sourceId":5}}');
+    expect(loadQueue(USER_ID)).toBeNull();
+    store.set(`nimbus.queue.v1:${USER_ID}`, "not json");
+    expect(loadQueue(USER_ID)).toBeNull();
   });
 
   test("backfills missing optional arrays", () => {
@@ -281,10 +294,10 @@ describe("persistence", () => {
     delete q.sourceOrder;
     delete q.shuffleMode;
     store.set(
-      "nimbus.queue.v1",
+      `nimbus.queue.v1:${USER_ID}`,
       JSON.stringify({ state: q, currentTrack: null, savedAt: 1 }),
     );
-    const loaded = loadQueue();
+    const loaded = loadQueue(USER_ID);
     expect(loaded?.state.history).toEqual([]);
     expect(loaded?.state.unplayable).toEqual([]);
     expect(loaded?.state.sourceOrder).toEqual(loaded!.state.order);
@@ -294,8 +307,8 @@ describe("persistence", () => {
   test("round-trips shuffleMode", () => {
     let q = createQueue("likes", IDS, { shuffle: true, startTrackId: 10 });
     q = setShuffleMode(q, "artist-spaced");
-    saveQueue(q, null);
-    expect(loadQueue()?.state.shuffleMode).toBe("artist-spaced");
+    saveQueue(USER_ID, q, null);
+    expect(loadQueue(USER_ID)?.state.shuffleMode).toBe("artist-spaced");
   });
 });
 

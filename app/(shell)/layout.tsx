@@ -4,6 +4,7 @@ import { getUserAuth } from "@/lib/db";
 import { ToastProvider } from "@/components/ui/Toast";
 import { PlayerProvider } from "@/components/player/PlayerProvider";
 import { AppShell } from "@/components/shell/AppShell";
+import { AuthenticatedUserProvider } from "@/components/auth/AuthenticatedUser";
 
 export default async function ShellLayout({
   children,
@@ -13,13 +14,21 @@ export default async function ShellLayout({
 
   // Removed/disabled members get bounced instead of a shell full of 401s.
   const membership = await getUserAuth(session.userId);
-  if (!membership || membership.disabled) redirect("/");
+  if (
+    !membership ||
+    membership.disabled ||
+    membership.scUserId !== session.scUserId
+  ) {
+    redirect("/");
+  }
 
   return (
-    <ToastProvider>
-      <PlayerProvider>
-        <AppShell>{children}</AppShell>
-      </PlayerProvider>
-    </ToastProvider>
+    <AuthenticatedUserProvider userId={session.userId}>
+      <ToastProvider>
+        <PlayerProvider userId={session.userId}>
+          <AppShell>{children}</AppShell>
+        </PlayerProvider>
+      </ToastProvider>
+    </AuthenticatedUserProvider>
   );
 }

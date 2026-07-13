@@ -1,5 +1,5 @@
 import { getPool, getUserById } from "./db";
-import { decryptToken, encryptToken } from "./crypto";
+import { decryptToken, encryptToken, tokenContext } from "./crypto";
 import { getProvider } from "./provider";
 
 /** Refresh this early so a token can't expire mid-request. */
@@ -36,7 +36,10 @@ export async function getValidAccessToken(
     if (!row) throw new ReauthRequiredError("unknown user");
     if (fresh(row.access_expires_at)) {
       return {
-        accessToken: decryptToken(row.access_token_enc),
+        accessToken: decryptToken(
+          row.access_token_enc,
+          tokenContext(row.sc_user_id, "access"),
+        ),
         expiresAt: new Date(row.access_expires_at),
         refreshed: false,
       };
@@ -47,7 +50,7 @@ export async function getValidAccessToken(
   try {
     await client.query("BEGIN");
     const { rows } = await client.query(
-      `SELECT access_token_enc, refresh_token_enc, access_expires_at
+      `SELECT sc_user_id, access_token_enc, refresh_token_enc, access_expires_at
        FROM users WHERE id = $1 FOR UPDATE`,
       [userId],
     );
@@ -58,7 +61,10 @@ export async function getValidAccessToken(
     if (!force && fresh(row.access_expires_at)) {
       await client.query("COMMIT");
       return {
-        accessToken: decryptToken(row.access_token_enc),
+        accessToken: decryptToken(
+          row.access_token_enc,
+          tokenContext(Number(row.sc_user_id), "access"),
+        ),
         expiresAt: new Date(row.access_expires_at),
         refreshed: false,
       };
@@ -66,7 +72,12 @@ export async function getValidAccessToken(
 
     let tokens;
     try {
-      tokens = await getProvider().refresh(decryptToken(row.refresh_token_enc));
+      tokens = await getProvider().refresh(
+        decryptToken(
+          row.refresh_token_enc,
+          tokenContext(Number(row.sc_user_id), "refresh"),
+        ),
+      );
     } catch (cause) {
       throw new ReauthRequiredError(`token refresh failed: ${cause}`);
     }
@@ -75,8 +86,14 @@ export async function getValidAccessToken(
          access_expires_at = $3, updated_at = now()
        WHERE id = $4`,
       [
-        encryptToken(tokens.accessToken),
-        encryptToken(tokens.refreshToken),
+        encryptToken(
+          tokens.accessToken,
+          tokenContext(Number(row.sc_user_id), "access"),
+        ),
+        encryptToken(
+          tokens.refreshToken,
+          tokenContext(Number(row.sc_user_id), "refresh"),
+        ),
         tokens.expiresAt,
         userId,
       ],

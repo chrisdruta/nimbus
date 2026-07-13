@@ -1,6 +1,16 @@
 import { type NextRequest } from "next/server";
-import { withAdmin, BadRequestError } from "@/lib/route-helpers";
-import { createInvite, inviteStatus, listInvites, type InviteRow } from "@/lib/invites";
+import {
+  withAdmin,
+  BadRequestError,
+  readJsonBody,
+  requireSameOrigin,
+} from "@/lib/route-helpers";
+import {
+  createInvite,
+  inviteStatus,
+  listInvites,
+  type InviteRow,
+} from "@/lib/invites";
 
 export const runtime = "nodejs";
 
@@ -23,13 +33,16 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   return withAdmin(async () => {
-    const body = (await req.json().catch(() => null)) as {
+    requireSameOrigin(req);
+    const body = (await readJsonBody(req)) as {
       note?: unknown;
     } | null;
     const note = body?.note;
     if (note !== undefined && typeof note !== "string") {
       throw new BadRequestError("note must be a string");
     }
+    if (note && note.length > 500)
+      throw new BadRequestError("note is too long");
     return toApi(await createInvite(note?.trim() || null));
   });
 }

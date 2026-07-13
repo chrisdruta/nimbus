@@ -56,7 +56,11 @@ export interface QueueState {
 }
 
 const HISTORY_CAP = 50;
-const STORAGE_KEY = "nimbus.queue.v1";
+const STORAGE_KEY_PREFIX = "nimbus.queue.v1";
+
+function storageKey(userId: number): string {
+  return `${STORAGE_KEY_PREFIX}:${userId}`;
+}
 
 // ---------------------------------------------------------------- shuffle
 
@@ -466,20 +470,21 @@ function storage(): Storage | null {
 }
 
 export function saveQueue(
+  userId: number,
   state: QueueState,
   currentTrack: QueueTrack | null,
 ): void {
   const payload: PersistedQueue = { state, currentTrack, savedAt: Date.now() };
   try {
-    storage()?.setItem(STORAGE_KEY, JSON.stringify(payload));
+    storage()?.setItem(storageKey(userId), JSON.stringify(payload));
   } catch {
     // quota/private mode — persistence is best-effort
   }
 }
 
-export function loadQueue(): PersistedQueue | null {
+export function loadQueue(userId: number): PersistedQueue | null {
   try {
-    const raw = storage()?.getItem(STORAGE_KEY);
+    const raw = storage()?.getItem(storageKey(userId));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedQueue;
     const s = parsed?.state;
@@ -494,7 +499,9 @@ export function loadQueue(): PersistedQueue | null {
     return {
       state: {
         ...s,
-        sourceOrder: Array.isArray(s.sourceOrder) ? s.sourceOrder : [...s.order],
+        sourceOrder: Array.isArray(s.sourceOrder)
+          ? s.sourceOrder
+          : [...s.order],
         history: Array.isArray(s.history) ? s.history : [],
         unplayable: Array.isArray(s.unplayable) ? s.unplayable : [],
         shuffleMode: ["classic", "artist-spaced", "rediscovery"].includes(
@@ -511,9 +518,9 @@ export function loadQueue(): PersistedQueue | null {
   }
 }
 
-export function clearQueue(): void {
+export function clearQueue(userId: number): void {
   try {
-    storage()?.removeItem(STORAGE_KEY);
+    storage()?.removeItem(storageKey(userId));
   } catch {
     // ignore
   }

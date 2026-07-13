@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { readSession } from "@/lib/session";
+import { getUserAuth } from "@/lib/db";
 
 const AUTH_ERRORS: Record<string, string> = {
   not_invited: "nimbus is invite-only — ask Chris for an invite link",
@@ -13,7 +14,16 @@ export default async function Landing({
   searchParams: Promise<{ auth_error?: string }>;
 }) {
   const session = await readSession();
-  if (session) redirect("/library");
+  if (session) {
+    const membership = await getUserAuth(session.userId);
+    if (
+      membership &&
+      !membership.disabled &&
+      membership.scUserId === session.scUserId
+    ) {
+      redirect("/library");
+    }
+  }
   const { auth_error } = await searchParams;
   const errorMessage = auth_error ? AUTH_ERRORS[auth_error] : undefined;
 

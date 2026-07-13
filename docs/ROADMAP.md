@@ -93,7 +93,7 @@ collapsed — this also removed the `bottom-[88px]` bar-height coupling);
 media bar grew to h-24 with bigger transport and thumb; volume flyout
 overflow fixed (a viewport-edge flyout caused a horizontal scrollbar) and
 volume moved to lead the right cluster, which is now column-centered; the
-stage runs *inside* the shell (`StageView` overlays only the main content
+stage runs _inside_ the shell (`StageView` overlays only the main content
 area — sidebar, queue, and media bar stay); a slim pinned header (artwork,
 title, count, compact shuffle/play) fades in when the browse header
 scrolls away; shuffle got an on-dot, a bigger mode chevron, and an
@@ -102,6 +102,7 @@ buttons anchor at the row level so they no longer scroll with content;
 tile minimum 200px.
 
 Validation:
+
 - 179 unit tests green (3 new: stage-mode strip, cycling, validation);
   typecheck + production build clean; queue/slipstream/DSP tests
   untouched.
@@ -124,7 +125,7 @@ a source when it opens and persists the normalized list in IndexedDB
 hydrates instantly from cache; a live first-page check
 (`lib/library-cache.ts`: pure freshness policy, 24h TTL, 30-day eviction)
 decides whether the cache stands or a fresh walk runs — the displayed list
-only shrinks on a *completed* walk. New pure `integrate()` in
+only shrinks on a _completed_ walk. New pure `integrate()` in
 `lib/queue.ts` mixes late-arriving pages into the unplayed remainder of a
 shuffled queue (seeded, deterministic) instead of piling them at the tail;
 removals stay confined to the new `syncSource` player action, which only
@@ -132,6 +133,7 @@ ever sees complete lists. BrowseView keeps windowed rendering (the data is
 all in memory; the DOM grows by 50 tiles via the existing sentinel).
 
 Validation:
+
 - 176 unit tests green (24 new: `integrate` insertion bounds/permutation/
   determinism/dedupe, cache validator, page merge, first-page-change and
   skip-walk truth tables); typecheck + build clean.
@@ -162,9 +164,10 @@ design north star in CLAUDE.md, plain-text README tagline (Spotify
 comparison dropped).
 
 Validation:
+
 - 152 unit tests green (36 new: sync-plan precedence, holds, drift
   boundaries, window advance, heartbeat validation; caps rows); typecheck
-  + build clean.
+  - build clean.
 - Schema applied idempotently (twice) over live data.
 - Routes (curl, minted sessions): anonymous → 401 on all three; malformed
   /oversized-window heartbeat → 400; self-snapshot → 400; missing/stale
@@ -174,7 +177,7 @@ Validation:
   10-track window; pause writes playing:false; keepalive bumps updated_at.
 - Follower (two sessions, real tracks): join landed ~0.5 s off the
   extrapolated host playhead; host track change propagated in ≤1 poll; an
-  unresolvable window lead 422'd, refunded quota, and was skipped
+  unresolvable window lead 422'd, consumed an attempt, and was skipped
   in-window silently; local pause stuck across polls; leave and
   host-went-stale both restored the parked queue — persisted queue state
   byte-identical, playback resumed at the parked in-track position;
@@ -197,11 +200,13 @@ by per-track `track_plays` tallies recorded server-side after successful
 stream resolution).
 
 Validation:
+
 - 116 unit tests green (DSP, onset, scope, particles, palette, prefs,
   shuffle algorithms, queue-state evolution); typecheck + build clean.
 - `db/schema.sql` applied idempotently (twice) over live data.
 - Live: `/api/plays` 401s anonymously; two plays of one track →
-  `playCount: 2`; a failed (422) resolution creates no tally and refunds
+  `playCount: 2`; a failed (422) resolution creates no tally but consumes an
+  attempt
   the quota counter.
 - Persisted queues from before the change load as `classic` without
   wiping state.
@@ -213,12 +218,13 @@ OAuth dance cookie) replace the single-owner gate; `OWNER_SC_USER_ID`
 now identifies the owner/admin. Per-user (default 150/day) and global
 (default 12,000/day — headroom under SoundCloud's 15,000 client cap)
 stream-start quotas, enforced atomically before stream resolution with
-refund-on-failure and friendly 429s. DB-backed membership checks cut off
+attempt-counting and friendly 429s. DB-backed membership checks cut off
 disabled/removed users on their next request despite 7-day session JWTs.
 Owner-only `/admin`: usage gauge, live-editable limits, invite and user
 management.
 
 Validation:
+
 - Schema applies idempotently over live M2 data.
 - Invite lifecycle: create → landing offers sign-in; revoke → "no longer
   valid", second revoke 400s; two concurrent claims of one code → exactly
@@ -226,7 +232,7 @@ Validation:
 - Quotas: user-cap 429 (`scope:"user"`), global-cap 429 blocks everyone
   including the owner (`scope:"global"`), both with `used`/`limit`/
   `resetsAt` + `Retry-After`; owner bypasses only the per-user cap;
-  failed resolutions refund; the player toasts and pauses on 429 (never
+  failed resolutions consume an attempt; the player toasts and pauses on 429 (never
   skip-spams).
 - Membership: disable → next call 403s and the shell bounces; re-enable
   restores without re-login; remove → 401 + fresh invite needed; owner
@@ -246,6 +252,7 @@ SoundCloud console holds exactly one URI, so local dev reuses the
 owner's stored tokens plus a minted session.
 
 Validation:
+
 - No client secret, code verifier, or token ever reaches the browser
   (two cookies only).
 - `users` rows hold opaque `iv.ct.tag` blobs; sessions survive server

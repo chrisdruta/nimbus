@@ -12,6 +12,7 @@ import {
   type RefObject,
 } from "react";
 import type { ProviderTrack } from "@/lib/provider";
+import Hls from "hls.js";
 import { formatReset } from "@/lib/format";
 import {
   createQueue,
@@ -190,7 +191,13 @@ function toQueueTrack(t: ProviderTrack): QueueTrack {
   };
 }
 
-export function PlayerProvider({ children }: { children: ReactNode }) {
+export function PlayerProvider({
+  children,
+  userId,
+}: {
+  children: ReactNode;
+  userId: number;
+}) {
   const toast = useToast();
 
   const [queue, setQueueState] = useState<QueueState | null>(null);
@@ -202,12 +209,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
+  const hlsRef = useRef<Hls | null>(null);
   const queueRef = useRef<QueueState | null>(null);
   const metaRef = useRef<Map<number, QueueTrack>>(new Map());
   const failStreakRef = useRef(0);
-  const playsRef = useRef<Map<number, { playCount: number; lastPlayedAt: number }>>(
-    new Map(),
-  );
+  const playsRef = useRef<
+    Map<number, { playCount: number; lastPlayedAt: number }>
+  >(new Map());
   const playsFetchedAtRef = useRef(0);
 
   // ------------------------------------------------- slipstream (follower)
@@ -227,7 +235,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Late-bound so async loops always see the current implementations.
-  const followPlayRef = useRef<(trackId: number, atMs: number) => void>(() => {});
+  const followPlayRef = useRef<(trackId: number, atMs: number) => void>(
+    () => {},
+  );
   const leaveSlipstreamRef = useRef<() => void>(() => {});
   const pollTickRef = useRef<() => void>(() => {});
 
@@ -239,7 +249,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // ---------------------------------------------------------- rehydrate
 
   useEffect(() => {
-    const persisted = loadQueue();
+    const persisted = loadQueue(userId);
     if (persisted) {
       setQueue(persisted.state);
       setCurrent(persisted.currentTrack);
@@ -259,8 +269,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // not overwrite the parked local snapshot.
   useEffect(() => {
     if (followRef.current) return;
-    if (queue) saveQueue(queue, current);
-  }, [queue, current]);
+    if (queue) saveQueue(userId, queue, current);
+  }, [queue, current, userId]);
 
   useEffect(() => {
     const el = audioRef.current;
@@ -305,7 +315,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       const res = await fetch("/api/plays");
       if (!res.ok) return;
       const { plays } = (await res.json()) as {
-        plays: Array<{ trackId: number; playCount: number; lastPlayedAt: string }>;
+        plays: Array<{
+          trackId: number;
+          playCount: number;
+          lastPlayedAt: string;
+        }>;
       };
       playsRef.current = new Map(
         plays.map((p) => [
@@ -333,8 +347,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const advanceRef = useRef<() => void>(() => {});
 
   type ResolveOutcome =
-    | { ok: true; url: string }
-    | { ok: false; kind: "auth" | "quota" | "unavailable" | "error"; message: string };
+    | { ok: true; url: string; protocol: "progressive" | "hls" | "unknown" }
+    | {
+        ok: false;
+        kind: "auth" | "quota" | "unavailable" | "error";
+        message: string;
+      };
 
   /** Fetch + error vocabulary only — no queue or follow side effects. The
    * local and follow consumers decide what each outcome means. */
@@ -342,10 +360,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     async (trackId: number): Promise<ResolveOutcome> => {
       const meta = metaRef.current.get(trackId);
       const label = meta ? `"${meta.title}"` : `track ${trackId}`;
-      const res = await fetch(`/api/tracks/${trackId}/play`).catch(() => null);
+      const res = await fetch(`/api/tracks/${trackId}/play`, {
+        method: "POST",
+      }).catch(() => null);
       if (res?.ok) {
-        const { url } = (await res.json()) as { url: string };
-        return { ok: true, url };
+        const { url, protocol } = (await res.json()) as {
+          url: string;
+          protocol: "progressive" | "hls" | "unknown";
+        };
+        return { ok: true, url, protocol };
       }
       if (res && (res.status === 401 || res.status === 403)) {
         return {
@@ -385,6 +408,61 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const loadStream = useCallback(
+    async (
+      el: HTMLAudioElement,
+      stream: Extract<ResolveOutcome, { ok: true }>,
+    ): Promise<void> => {
+      hlsRef.current?.destroy();
+      hlsRef.current = null;
+
+      if (
+        stream.protocol !== "hls" ||
+        el.canPlayType("application/vnd.apple.mpegurl")
+      ) {
+        el.src = stream.url;
+        return;
+      }
+      if (!Hls.isSupported()) throw new Error("HLS is unsupported");
+
+      const hls = new Hls({ enableWorker: true });
+      hlsRef.current = hls;
+      await new Promise<void>((resolve, reject) => {
+        const timeout = window.setTimeout(
+          () => finish(new Error("HLS manifest timed out")),
+          15_000,
+        );
+        const finish = (error?: Error) => {
+          window.clearTimeout(timeout);
+          hls.off(Hls.Events.MANIFEST_PARSED, onManifest);
+          hls.off(Hls.Events.ERROR, onError);
+          if (error) reject(error);
+          else resolve();
+        };
+        const onManifest = () => finish();
+        const onError = (
+          _event: string,
+          data: { fatal: boolean; type: string },
+        ) => {
+          if (data.fatal) finish(new Error(`HLS ${data.type}`));
+        };
+        hls.on(Hls.Events.MANIFEST_PARSED, onManifest);
+        hls.on(Hls.Events.ERROR, onError);
+        hls.attachMedia(el);
+        hls.loadSource(stream.url);
+      });
+    },
+    [],
+  );
+
+  useEffect(
+    () => () => {
+      hlsRef.current?.destroy();
+      hlsRef.current = null;
+    },
+    [],
+  );
+
   /** Local-queue consumer — today's semantics, unchanged. */
   const resolveAndPlay = useCallback(
     async (trackId: number) => {
@@ -417,8 +495,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
 
       failStreakRef.current = 0;
-      el.src = outcome.url;
       try {
+        await loadStream(el, outcome);
         await el.play();
         setPlaying(true);
         // Returning from a slipstream: land back at the parked playhead.
@@ -432,7 +510,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setPlaying(false);
       }
     },
-    [ensureGraph, resolveStream, setQueue, toast],
+    [ensureGraph, loadStream, resolveStream, setQueue, toast],
   );
 
   const advance = useCallback(() => {
@@ -494,8 +572,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      el.src = outcome.url;
       try {
+        await loadStream(el, outcome);
         await el.play();
         setPlaying(true);
         // play() resolving means metadata is up — a positional join/switch
@@ -506,7 +584,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setPlaying(false);
       }
     },
-    [ensureGraph, publishFollowState, resolveStream, toast],
+    [ensureGraph, loadStream, publishFollowState, resolveStream, toast],
   );
   followPlayRef.current = (trackId, atMs) => void followPlay(trackId, atMs);
 
@@ -576,9 +654,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         }
         break;
       case "ended":
-        toast(
-          `${hostLabel(f.host)}'s slipstream ended — back to your queue`,
-        );
+        toast(`${hostLabel(f.host)}'s slipstream ended — back to your queue`);
         leaveSlipstreamRef.current();
         break;
       case "none":
@@ -758,9 +834,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (q && q.sourceId === sourceKey) {
           // Collections grow as pages stream in; fold new ids into the
           // queue — shuffled queues mix them into the unplayed remainder.
-          const additions = tracks
-            .filter((t) => t.streamable)
-            .map((t) => t.id);
+          const additions = tracks.filter((t) => t.streamable).map((t) => t.id);
           const merged = integrate(q, additions, buildCtx());
           if (merged !== q) setQueue(merged);
         }
@@ -902,7 +976,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           // The rest of the host's window after wherever we actually are.
           const anchor = f.localTrackId ?? f.snap.trackId;
           const at = f.snap.window.findIndex((t) => t.id === anchor);
-          return f.snap.window.slice(at === -1 ? 1 : at + 1, at === -1 ? n + 1 : at + 1 + n);
+          return f.snap.window.slice(
+            at === -1 ? 1 : at + 1,
+            at === -1 ? n + 1 : at + 1 + n,
+          );
         }
         const q = queueRef.current;
         if (!q) return [];

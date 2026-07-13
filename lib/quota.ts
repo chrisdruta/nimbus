@@ -30,7 +30,8 @@ export interface QuotaInput {
 export function decideQuota(
   q: QuotaInput,
 ): { allowed: true } | { allowed: false; scope: QuotaScope } {
-  if (q.globalCount >= q.globalLimit) return { allowed: false, scope: "global" };
+  if (q.globalCount >= q.globalLimit)
+    return { allowed: false, scope: "global" };
   if (!q.ownerExempt && q.userCount >= q.userLimit) {
     return { allowed: false, scope: "user" };
   }
@@ -119,22 +120,6 @@ export async function consumePlayStart(
         userDailyPlayLimit,
         nextUtcMidnight(),
       );
-}
-
-/**
- * Best-effort decrement when stream resolution fails after the counter was
- * consumed — a run of unavailable tracks the client auto-skips must not
- * drain quota. Assumes failed resolutions don't count against SoundCloud's
- * cap; if that's wrong, the local undercount sits inside the headroom.
- */
-export async function refundPlayStart(
-  userId: number,
-  day: string,
-): Promise<void> {
-  await sql()`
-    UPDATE play_counts SET count = count - 1
-    WHERE user_id = ${userId} AND day = ${day}::date AND count > 0
-  `;
 }
 
 /** Today's total stream starts across all users (admin gauge). */

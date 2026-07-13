@@ -13,7 +13,6 @@ import {
   type TrackSource,
 } from "@/lib/library-cache";
 import { idbDelete, idbGet, idbKeys, idbSet } from "@/lib/idb";
-import { readPref } from "@/lib/prefs";
 
 export type { TrackSource };
 export { sourceKey };
@@ -30,18 +29,6 @@ interface PageResponse {
   tracks: ProviderTrack[];
   nextCursor: string | null;
   error?: string;
-}
-
-function isMePref(v: unknown): v is { userId: number } {
-  return (
-    typeof v === "object" &&
-    v !== null &&
-    typeof (v as { userId?: unknown }).userId === "number"
-  );
-}
-
-function knownUserId(): number | null {
-  return readPref("me", isMePref)?.userId ?? null;
 }
 
 /** Once per session, drop cache records nobody has refreshed in a month. */
@@ -66,7 +53,7 @@ function evictStale(): void {
  * whose head matches the live first page short-circuits the walk. The
  * displayed list only shrinks on a *completed* walk, never mid-walk.
  */
-export function useLibrary(source: TrackSource) {
+export function useLibrary(source: TrackSource, userId: number) {
   const key = sourceKey(source);
   const [tracks, setTracks] = useState<ProviderTrack[]>([]);
   const [complete, setComplete] = useState(false);
@@ -92,8 +79,6 @@ export function useLibrary(source: TrackSource) {
 
   const persist = useCallback(
     (list: ProviderTrack[]) => {
-      const userId = knownUserId();
-      if (userId === null) return;
       const rec: CachedLibrary = {
         v: 1,
         userId,
@@ -104,7 +89,7 @@ export function useLibrary(source: TrackSource) {
       };
       void idbSet(cacheKey(userId, key), rec);
     },
-    [key],
+    [key, userId],
   );
 
   /** Walk pages from cursorRef until exhausted; resumable after errors. */
@@ -155,22 +140,19 @@ export function useLibrary(source: TrackSource) {
     void (async () => {
       // 1. Instant hydration from the per-user cache record.
       let cached: CachedLibrary | null = null;
-      const userId = knownUserId();
-      if (userId !== null) {
-        const rec = await idbGet(cacheKey(userId, key));
-        if (gen !== genRef.current) return;
-        if (
-          validateCachedLibrary(rec) &&
-          rec.userId === userId &&
-          rec.sourceKey === key &&
-          rec.complete
-        ) {
-          cached = rec;
-          hydratedRef.current = true;
-          setTracks(rec.tracks);
-          setComplete(true);
-          setLoading(false);
-        }
+      const rec = await idbGet(cacheKey(userId, key));
+      if (gen !== genRef.current) return;
+      if (
+        validateCachedLibrary(rec) &&
+        rec.userId === userId &&
+        rec.sourceKey === key &&
+        rec.complete
+      ) {
+        cached = rec;
+        hydratedRef.current = true;
+        setTracks(rec.tracks);
+        setComplete(true);
+        setLoading(false);
       }
 
       // 2. Live first page decides: cache is authoritative, or full walk.
@@ -183,7 +165,10 @@ export function useLibrary(source: TrackSource) {
           return;
         }
         const hasMore = page.nextCursor !== null;
-        if (cached && shouldSkipWalk(cached, page.tracks, hasMore, Date.now())) {
+        if (
+          cached &&
+          shouldSkipWalk(cached, page.tracks, hasMore, Date.now())
+        ) {
           return; // cached list stands
         }
         accRef.current = appendPage([], page.tracks);
@@ -204,7 +189,7 @@ export function useLibrary(source: TrackSource) {
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, userId]);
 
   /** Resume a failed walk from the saved cursor. */
   const retry = useCallback(() => {

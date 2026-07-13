@@ -128,7 +128,9 @@ export function planSync(
     // the follower back for a few seconds of overlap.
     const hostDuration = snap.window[0]?.durationMs ?? 0;
     const hostNearEnd =
-      snap.playing && hostDuration > 0 && hostDuration - expected <= END_GRACE_MS;
+      snap.playing &&
+      hostDuration > 0 &&
+      hostDuration - expected <= END_GRACE_MS;
     const weAdvanced =
       local.trackId !== null &&
       local.trackId === nextInWindow(snap.window, snap.trackId, new Set());
@@ -206,7 +208,8 @@ function isWindowEntry(v: unknown): v is QueueTrack {
   const t = v as Record<string, unknown>;
   return (
     typeof t.id === "number" &&
-    Number.isFinite(t.id) &&
+    Number.isSafeInteger(t.id) &&
+    t.id > 0 &&
     typeof t.title === "string" &&
     t.title.length <= MAX_STRING &&
     typeof t.artist === "string" &&
@@ -215,8 +218,9 @@ function isWindowEntry(v: unknown): v is QueueTrack {
     isArtworkUrl(t.artworkUrl) &&
     isHttpUrl(t.permalinkUrl) &&
     typeof t.durationMs === "number" &&
-    Number.isFinite(t.durationMs) &&
-    t.durationMs >= 0
+    Number.isSafeInteger(t.durationMs) &&
+    t.durationMs >= 0 &&
+    t.durationMs <= 24 * 60 * 60 * 1000
   );
 }
 
@@ -227,10 +231,12 @@ export function parseHeartbeat(body: unknown): Heartbeat | null {
   const b = body as Record<string, unknown>;
   if (
     typeof b.trackId !== "number" ||
-    !Number.isFinite(b.trackId) ||
+    !Number.isSafeInteger(b.trackId) ||
+    b.trackId <= 0 ||
     typeof b.positionMs !== "number" ||
     !Number.isFinite(b.positionMs) ||
     b.positionMs < 0 ||
+    b.positionMs > 24 * 60 * 60 * 1000 ||
     typeof b.playing !== "boolean"
   ) {
     return null;

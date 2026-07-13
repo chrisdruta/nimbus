@@ -182,9 +182,9 @@ describe("planSync", () => {
   });
 
   test("host paused, local playing: pause", () => {
-    expect(
-      planSync(snap({ playing: false }), local(), T0 + 1_000),
-    ).toEqual({ type: "pause" });
+    expect(planSync(snap({ playing: false }), local(), T0 + 1_000)).toEqual({
+      type: "pause",
+    });
   });
 
   test("host playing, local paused (not user-initiated): resume at expected", () => {
@@ -260,6 +260,12 @@ describe("parseHeartbeat", () => {
     expect(parseHeartbeat({ ...valid, window: [{ id: 10 }] })).toBeNull();
   });
 
+  test("rejects unsafe or database-incompatible numeric fields", () => {
+    expect(parseHeartbeat({ ...valid, trackId: -1 })).toBeNull();
+    expect(parseHeartbeat({ ...valid, trackId: Number.MAX_VALUE })).toBeNull();
+    expect(parseHeartbeat({ ...valid, positionMs: 86_400_001 })).toBeNull();
+  });
+
   test("rejects a javascript: url in a link field (stored XSS guard)", () => {
     expect(
       parseHeartbeat({
@@ -297,11 +303,15 @@ describe("parseHeartbeat", () => {
       ],
     });
     expect(ok).not.toBeNull();
-    expect(ok!.window![0].artworkUrl).toBe("https://i1.sndcdn.com/artworks-x.jpg");
+    expect(ok!.window![0].artworkUrl).toBe(
+      "https://i1.sndcdn.com/artworks-x.jpg",
+    );
   });
 
   test("rejects an oversized window", () => {
-    const window = Array.from({ length: WINDOW_SIZE + 1 }, (_, i) => track(i + 1));
+    const window = Array.from({ length: WINDOW_SIZE + 1 }, (_, i) =>
+      track(i + 1),
+    );
     expect(
       parseHeartbeat({ trackId: 1, positionMs: 0, playing: true, window }),
     ).toBeNull();
