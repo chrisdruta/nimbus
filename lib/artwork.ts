@@ -63,6 +63,11 @@ export function extractPalette(url: string | null): Promise<ArtPalette> {
   });
 
   paletteCache.set(url, promise);
+  // Cache successes only — a transient load failure must not pin the
+  // fallback palette for the rest of the session.
+  void promise.then((p) => {
+    if (!p.fromArtwork) paletteCache.delete(url);
+  });
   return promise;
 }
 
@@ -85,5 +90,8 @@ export function loadArtworkImage(
     img.src = sized;
   });
   imageCache.set(sized, promise);
+  void promise.then((img) => {
+    if (!img) imageCache.delete(sized);
+  });
   return promise;
 }

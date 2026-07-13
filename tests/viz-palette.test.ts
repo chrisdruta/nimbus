@@ -68,12 +68,40 @@ describe("pickVibrant", () => {
     expect(pickVibrant(buildHistogram(data))).toBeNull();
   });
 
-  test("ignores near-black and near-white vibrance", () => {
-    const data = pixels([
-      ...Array.from({ length: 50 }, () => [30, 5, 5] as [number, number, number]), // too dark
-      ...Array.from({ length: 50 }, () => [255, 245, 240] as [number, number, number]), // too light
-    ]);
+  test("dark-but-hued artwork yields its hue via the relaxed pass", () => {
+    // Deep red, below the strict lightness gate (l ≈ 0.07).
+    const data = pixels(
+      Array.from({ length: 100 }, () => [30, 5, 5] as [number, number, number]),
+    );
+    const rgb = pickVibrant(buildHistogram(data));
+    expect(rgb).not.toBeNull();
+    const [h, , l] = rgbToHsl(...rgb!);
+    expect(h).toBeLessThan(0.05); // still red
+    expect(l).toBeGreaterThanOrEqual(0.54); // lifted to readable
+  });
+
+  test("ignores near-white vibrance", () => {
+    const data = pixels(
+      Array.from(
+        { length: 100 },
+        () => [255, 245, 240] as [number, number, number],
+      ),
+    );
     expect(pickVibrant(buildHistogram(data))).toBeNull();
+  });
+
+  test("prefers a strict-vibrant bucket over a bigger dark one", () => {
+    const data = pixels([
+      // 70% deep dark blue (only passes the relaxed gate)...
+      ...Array.from({ length: 70 }, () => [10, 12, 40] as [number, number, number]),
+      // ...but 30% properly vibrant green wins via the strict pass.
+      ...Array.from({ length: 30 }, () => [60, 200, 80] as [number, number, number]),
+    ]);
+    const rgb = pickVibrant(buildHistogram(data));
+    expect(rgb).not.toBeNull();
+    const [r, g, b] = rgb!;
+    expect(g).toBeGreaterThan(r);
+    expect(g).toBeGreaterThan(b);
   });
 
   test("floors lightness so the color reads on near-black", () => {

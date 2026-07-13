@@ -5,6 +5,7 @@ import { SceneHost } from "./SceneHost";
 import { ScenePicker } from "./ScenePicker";
 import { createScene } from "./scenes";
 import { useVizTheme } from "./useVizTheme";
+import { extractPalette, loadArtworkImage } from "@/lib/artwork";
 import { CrossfadeArt } from "@/components/art/CrossfadeArt";
 import { cycleStageMode, isStageMode, STAGE_META, type StageMode } from "@/lib/stage";
 import { IconCloud } from "@/components/ui/icons";
@@ -50,6 +51,17 @@ export function StageView() {
     if (hideTimer.current) clearTimeout(hideTimer.current);
     hideTimer.current = setTimeout(() => setChromeVisible(false), CHROME_HIDE_MS);
   }, []);
+
+  // Warm palettes + artwork for what's next so a track change swaps the
+  // scene's colors immediately instead of lingering on the old theme
+  // while the new art downloads.
+  useEffect(() => {
+    if (!stageOpen) return;
+    for (const t of actions.upcomingTracks(3)) {
+      void extractPalette(t.artworkUrl);
+      void loadArtworkImage(t.artworkUrl);
+    }
+  }, [stageOpen, current, actions]);
 
   // Entry points steer the opening mode by writing the pref first (the
   // artwork thumb forces "art"), so re-read it on every open.

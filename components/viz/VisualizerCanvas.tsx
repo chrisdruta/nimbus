@@ -1,8 +1,12 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { usePlayerRefs } from "@/components/player/PlayerProvider";
+import {
+  usePlayerRefs,
+  usePlayerState,
+} from "@/components/player/PlayerProvider";
 import { FrameAnalyzer } from "@/lib/viz/analyzer";
+import { useVizTheme } from "./useVizTheme";
 
 function themeColor(name: string, fallback: string): string {
   if (typeof window === "undefined") return fallback;
@@ -20,6 +24,14 @@ const BAR_COUNT = 24;
  */
 export function VisualizerCanvas({ className = "" }: { className?: string }) {
   const { analyserRef } = usePlayerRefs();
+  const { current } = usePlayerState();
+  // Art-derived accent, same source as the stage scenes; falls back to the
+  // app accent while extraction runs (or when a track has no artwork).
+  // Always-mounted side effect: the current track's palette stays warm, so
+  // opening the stage never flashes the default color.
+  const theme = useVizTheme(current?.artworkUrl ?? null);
+  const accentRef = useRef(theme.accent);
+  accentRef.current = theme.accent;
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -27,7 +39,6 @@ export function VisualizerCanvas({ className = "" }: { className?: string }) {
     const g = canvas?.getContext("2d");
     if (!canvas || !g) return;
 
-    const accent = themeColor("--color-accent", "#ff4200");
     const dim = themeColor("--color-elem", "#404040");
     const analyzer = new FrameAnalyzer({ barCount: BAR_COUNT });
     let raf = 0;
@@ -53,7 +64,7 @@ export function VisualizerCanvas({ className = "" }: { className?: string }) {
       for (let i = 0; i < BAR_COUNT; i++) {
         const v = frame.bars[i];
         const h = Math.max(2, v * height);
-        g.fillStyle = v > 0.02 ? accent : dim;
+        g.fillStyle = v > 0.02 ? accentRef.current : dim;
         g.fillRect(i * (barWidth + gap), height - h, barWidth, h);
       }
     };

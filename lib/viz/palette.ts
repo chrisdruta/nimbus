@@ -91,23 +91,35 @@ export function buildHistogram(data: Uint8ClampedArray): HistogramBucket[] {
 
 /**
  * Most populous sufficiently-vibrant bucket's mean color, with lightness
- * floored so it reads against a near-black background. Null when the
- * artwork has no vibrant region (grayscale, washed out).
+ * floored so it reads against a near-black background. When nothing passes
+ * the strict vibrancy gate — common for dark artwork — a relaxed pass
+ * accepts dark-but-hued buckets and lets the lightness floor lift them,
+ * so a moody navy cover still tints navy instead of defaulting. Null only
+ * when the artwork carries no usable hue at all (grayscale, washed out).
  */
 export function pickVibrant(
   buckets: HistogramBucket[],
 ): [r: number, g: number, b: number] | null {
-  let best: HistogramBucket | null = null;
-  for (const bucket of buckets) {
-    if (bucket.count === 0) continue;
-    const [, s, l] = rgbToHsl(
-      bucket.r / bucket.count,
-      bucket.g / bucket.count,
-      bucket.b / bucket.count,
-    );
-    if (s <= 0.3 || l <= 0.2 || l >= 0.75) continue;
-    if (!best || bucket.count > best.count) best = bucket;
-  }
+  const mostPopulous = (
+    passes: (s: number, l: number) => boolean,
+  ): HistogramBucket | null => {
+    let best: HistogramBucket | null = null;
+    for (const bucket of buckets) {
+      if (bucket.count === 0) continue;
+      const [, s, l] = rgbToHsl(
+        bucket.r / bucket.count,
+        bucket.g / bucket.count,
+        bucket.b / bucket.count,
+      );
+      if (!passes(s, l)) continue;
+      if (!best || bucket.count > best.count) best = bucket;
+    }
+    return best;
+  };
+
+  const best =
+    mostPopulous((s, l) => s > 0.3 && l > 0.2 && l < 0.75) ??
+    mostPopulous((s, l) => s > 0.2 && l > 0.04 && l < 0.9);
   if (!best) return null;
   const [h, s, l] = rgbToHsl(
     best.r / best.count,
