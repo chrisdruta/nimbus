@@ -13,6 +13,9 @@ import { QuotaExceededError } from "./quota";
 /** Invalid input to an API route — maps to 400. */
 export class BadRequestError extends Error {}
 
+/** Requested resource doesn't exist (or is gone/stale) — maps to 404. */
+export class NotFoundError extends Error {}
+
 function toResponse(err: unknown): NextResponse {
   if (
     err instanceof UnauthorizedError ||
@@ -26,6 +29,9 @@ function toResponse(err: unknown): NextResponse {
   }
   if (err instanceof BadRequestError) {
     return NextResponse.json({ error: err.message }, { status: 400 });
+  }
+  if (err instanceof NotFoundError) {
+    return NextResponse.json({ error: err.message }, { status: 404 });
   }
   if (err instanceof TrackUnavailableError) {
     return NextResponse.json(

@@ -1,7 +1,7 @@
 # nimbus
 
-Unofficial lightweight SoundCloud client that feels like Spotify, with
-𝚊𝚎𝚜𝚝𝚑𝚎𝚝𝚒𝚌 features for an 𝚊𝚎𝚜𝚝𝚑𝚎𝚝𝚒𝚌 listening experience.
+An unofficial, lightweight SoundCloud client — aesthetic features for an
+aesthetic listening experience.
 
 Shuffle that actually works, a locally controlled queue, and reactive
 visualizations. A Next.js revival of a 2020 Create React App (retired
@@ -24,6 +24,10 @@ always credit and link back to their creator and SoundCloud.
 - **Shuffle modes**: *classic*, *artist-spaced* (no artist back-to-back),
   and *rediscovery* (surfaces rarely/never-played tracks, powered by your
   per-track play history).
+- **Slipstream**: a live "listening now" feed of what members are playing;
+  join someone's slipstream to hear what they hear, position-synced and
+  read-only. Your own queue parks untouched and every listener streams
+  through their own account — leave and you're back exactly where you were.
 - **Visualizations**: four fullscreen scenes — *spectrum*, *orbit*,
   *drift*, *scope* — switchable with ←/→ or 1–4, tinted from the track
   artwork, beat-reactive via onset detection. All bars run through a

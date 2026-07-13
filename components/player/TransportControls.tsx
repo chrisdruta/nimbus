@@ -14,10 +14,14 @@ import { ShuffleMenu } from "./ShuffleMenu";
 import { usePlayerActions, usePlayerState } from "./PlayerProvider";
 
 export function TransportControls() {
-  const { playing, shuffled, shuffleMode, repeat, current } = usePlayerState();
+  const { playing, shuffled, shuffleMode, repeat, current, caps } =
+    usePlayerState();
   const actions = usePlayerActions();
   const [menuOpen, setMenuOpen] = useState(false);
   const disabled = current === null;
+  // Present when the source (not the moment) forbids a control.
+  const hostHint = (allowed: boolean) =>
+    allowed ? undefined : "host controls playback";
 
   const side = "cursor-pointer text-muted transition hover:text-white disabled:cursor-default disabled:opacity-40";
 
@@ -27,7 +31,8 @@ export function TransportControls() {
         <button
           aria-label={`toggle shuffle (${shuffleMode})`}
           onClick={actions.toggleShuffleMode}
-          disabled={disabled}
+          disabled={disabled || !caps.canShuffle}
+          title={hostHint(caps.canShuffle)}
           className={`relative ${side} ${shuffled ? "text-accent hover:text-accent" : ""}`}
         >
           <IconShuffle size={17} />
@@ -40,14 +45,21 @@ export function TransportControls() {
         <button
           aria-label="choose shuffle mode"
           onClick={() => setMenuOpen((o) => !o)}
-          disabled={disabled}
+          disabled={disabled || !caps.canShuffle}
+          title={hostHint(caps.canShuffle)}
           className={`-mr-3 ${side}`}
         >
           <IconChevronUp size={11} />
         </button>
         {menuOpen && <ShuffleMenu onClose={() => setMenuOpen(false)} />}
       </div>
-      <button aria-label="previous" onClick={actions.prevTrack} disabled={disabled} className={side}>
+      <button
+        aria-label="previous"
+        onClick={actions.prevTrack}
+        disabled={disabled || !caps.canSkip}
+        title={hostHint(caps.canSkip)}
+        className={side}
+      >
         <IconPrev size={20} />
       </button>
       <button
@@ -58,13 +70,20 @@ export function TransportControls() {
       >
         {playing ? <IconPause size={18} /> : <IconPlay size={18} />}
       </button>
-      <button aria-label="next" onClick={actions.nextTrack} disabled={disabled} className={side}>
+      <button
+        aria-label="next"
+        onClick={actions.nextTrack}
+        disabled={disabled || !caps.canSkip}
+        title={hostHint(caps.canSkip)}
+        className={side}
+      >
         <IconNext size={20} />
       </button>
       <button
         aria-label={`repeat: ${repeat}`}
         onClick={actions.cycleRepeat}
-        disabled={disabled}
+        disabled={disabled || !caps.canRepeat}
+        title={hostHint(caps.canRepeat)}
         className={`relative ${side} ${repeat !== "off" ? "text-accent hover:text-accent" : ""}`}
       >
         <IconRepeat size={17} />

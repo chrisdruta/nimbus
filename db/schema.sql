@@ -53,6 +53,24 @@ CREATE TABLE IF NOT EXISTS track_plays (
 CREATE INDEX IF NOT EXISTS track_plays_recent_idx
   ON track_plays (user_id, last_played_at DESC);
 
+-- Live listening presence ("slipstream"): one row per host, upserted by
+-- heartbeat while playing; a host is live while updated_at is fresh
+-- (STALE_MS in lib/slipstream.ts — keep the two in lockstep). Rows are never
+-- cleaned up: staleness is a WHERE clause and cardinality = user count.
+-- track_window is a wholesale-replaced jsonb snapshot (QueueTrack[], current
+-- track first) — display metadata only, never stream URLs; followers resolve
+-- streams via their own token and quota. ("window" itself is reserved SQL.)
+CREATE TABLE IF NOT EXISTS slipstreams (
+  user_id      bigint PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  track_id     bigint  NOT NULL,
+  position_ms  integer NOT NULL DEFAULT 0 CHECK (position_ms >= 0),
+  playing      boolean NOT NULL DEFAULT true,
+  track_window jsonb   NOT NULL DEFAULT '[]',
+  updated_at   timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS slipstreams_live_idx
+  ON slipstreams (updated_at DESC) WHERE playing;
+
 -- One row of app-wide knobs. The global limit stays under SoundCloud's
 -- 15,000 stream-starts/day client cap to leave concurrency headroom.
 CREATE TABLE IF NOT EXISTS app_settings (

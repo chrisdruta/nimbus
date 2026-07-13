@@ -9,7 +9,7 @@ import { usePlayerRefs, usePlayerState } from "./PlayerProvider";
  * re-renders anything above this component. */
 export function SeekBar() {
   const { audioRef } = usePlayerRefs();
-  const { current, playing } = usePlayerState();
+  const { current, playing, caps } = usePlayerState();
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const scrubRef = useRef<number | null>(null);
@@ -52,6 +52,7 @@ export function SeekBar() {
         step={5}
         ariaLabel="seek"
         className="flex-1"
+        disabled={!caps.canSeek}
         onScrub={(v) => {
           scrubRef.current = v;
           forceRender((n) => n + 1);

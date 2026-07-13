@@ -14,6 +14,7 @@ export function Slider({
   onCommit,
   ariaLabel,
   className = "",
+  disabled = false,
 }: {
   value: number;
   max: number;
@@ -22,6 +23,8 @@ export function Slider({
   onCommit: (v: number) => void;
   ariaLabel: string;
   className?: string;
+  /** Read-only: still renders progress, ignores pointer/keys, hides thumb. */
+  disabled?: boolean;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -46,9 +49,13 @@ export function Slider({
       aria-valuemin={0}
       aria-valuemax={max}
       aria-valuenow={value}
-      tabIndex={0}
-      className={`group relative flex h-4 cursor-pointer items-center ${className}`}
+      aria-disabled={disabled || undefined}
+      tabIndex={disabled ? -1 : 0}
+      className={`group relative flex h-4 items-center ${
+        disabled ? "cursor-default" : "cursor-pointer"
+      } ${className}`}
       onPointerDown={(e) => {
+        if (disabled) return;
         e.currentTarget.setPointerCapture(e.pointerId);
         setDragging(true);
         onScrub?.(valueAt(e.clientX));
@@ -57,10 +64,12 @@ export function Slider({
         if (dragging) onScrub?.(valueAt(e.clientX));
       }}
       onPointerUp={(e) => {
+        if (disabled) return;
         setDragging(false);
         onCommit(valueAt(e.clientX));
       }}
       onKeyDown={(e) => {
+        if (disabled) return;
         if (e.key === "ArrowRight" || e.key === "ArrowUp") {
           onCommit(Math.min(max, value + step));
         } else if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
@@ -71,17 +80,23 @@ export function Slider({
       <div className="h-1 w-full overflow-hidden rounded-full bg-elem">
         <div
           className={`h-full rounded-full ${
-            dragging ? "bg-accent" : "bg-white group-hover:bg-accent"
+            dragging
+              ? "bg-accent"
+              : disabled
+                ? "bg-white"
+                : "bg-white group-hover:bg-accent"
           }`}
           style={{ width: `${ratio * 100}%` }}
         />
       </div>
-      <div
-        className={`absolute h-3 w-3 -translate-x-1/2 rounded-full bg-white shadow ${
-          dragging ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-        }`}
-        style={{ left: `${ratio * 100}%` }}
-      />
+      {!disabled && (
+        <div
+          className={`absolute h-3 w-3 -translate-x-1/2 rounded-full bg-white shadow ${
+            dragging ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          }`}
+          style={{ left: `${ratio * 100}%` }}
+        />
+      )}
     </div>
   );
 }

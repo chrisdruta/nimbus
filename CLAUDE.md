@@ -45,6 +45,13 @@ bunx playwright-cli close
 - Don't loop track playback in automation — play resolution consumes real
   SoundCloud quota (`consumePlayStart`).
 
+## Design north star
+
+"An unofficial, lightweight SoundCloud client — aesthetic features for an
+aesthetic listening experience." Player-first, lowercase, understated chrome;
+borrow good patterns from anywhere but don't imitate any one app. Taste-check
+every UI decision against this line.
+
 ## Architecture
 
 **Token-broker pattern (hard constraint).** The Next.js backend brokers JSON
@@ -115,6 +122,12 @@ and refetch after mutations — no data library, no UI component library
 in `app/globals.css` (`--color-accent` #ff4200 etc.); lowercase, understated
 chrome is the house style. localStorage uses versioned/validated payloads
 (`lib/queue.ts` persistence, `lib/prefs.ts`) with backfill for missing fields.
+
+**Infra is settled.** Neon + polling is the chosen stack and slipstream
+transport at friends scale (decision + revisit triggers in
+`docs/ROADMAP.md` "Infrastructure"). Don't introduce realtime infra
+(WebSockets/SSE/Redis/brokers) or new stores without hitting a trigger;
+the Vercel Hobby quota to watch is Active CPU.
 
 **Feature tracking.** `docs/ROADMAP.md` is the living tracker: planned work
 under "Next / ideas", shipped milestones with dates and validation records

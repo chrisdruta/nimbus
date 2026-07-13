@@ -3,12 +3,13 @@
 import { artworkSized } from "@/lib/artwork";
 import { IconCloud, IconShare } from "@/components/ui/icons";
 import { useToast } from "@/components/ui/Toast";
-import { usePlayerState } from "./PlayerProvider";
+import { usePlayerActions, usePlayerState } from "./PlayerProvider";
 
 /** Current track info; the links double as the required SoundCloud
  * attribution (track -> permalink, artist -> creator profile). */
 export function NowPlaying() {
-  const { current } = usePlayerState();
+  const { current, slipstream } = usePlayerState();
+  const actions = usePlayerActions();
   const toast = useToast();
 
   if (!current) {
@@ -63,6 +64,19 @@ export function NowPlaying() {
             on SoundCloud
           </a>
         </div>
+        {slipstream && (
+          <div className="truncate text-[11px]">
+            <span className="text-accent">
+              in {slipstream.host.username ?? "member"}&apos;s slipstream
+            </span>{" "}
+            <button
+              onClick={actions.leaveSlipstream}
+              className="cursor-pointer text-muted transition hover:text-accent"
+            >
+              · leave
+            </button>
+          </div>
+        )}
       </div>
       <button
         aria-label="copy track link"

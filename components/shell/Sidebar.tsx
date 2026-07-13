@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { SidebarPlaylists } from "./SidebarPlaylists";
+import { LiveFeed } from "@/components/slipstream/LiveFeed";
 import { IconCloud } from "@/components/ui/icons";
 
 interface Me {
@@ -101,6 +102,8 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           </Link>
         )}
       </div>
+
+      <LiveFeed />
 
       <SidebarPlaylists onNavigate={onNavigate} />
     </nav>

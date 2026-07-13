@@ -4,8 +4,31 @@ The living tracker for nimbus. Add ideas under **Next / ideas**; when a
 milestone ships, move it to **Shipped** with its date and validation
 record. The README stays a clean front page — history lives here.
 
+## Infrastructure (decided 2026-07-13)
+
+Nimbus stays on **Neon + polling** — researched and settled, don't
+relitigate without a trigger. Neon's free tier is stable and improving
+post-Databricks, and it's Vercel's blessed Marketplace Postgres; Supabase
+free pauses projects after 7 idle days (data-loss hazard at friends
+scale); Edge Config/Blob have no use case here. Slipstream's polling
+transport is the light option at this scale: Vercel's WebSocket beta
+(June 2026) has no fan-out/presence primitive (their own guide bolts on
+Redis), and Neon LISTEN/NOTIFY dies with free-tier autosuspend.
+
+If push is ever wanted: keep Postgres as source of truth, publish a
+change-ping from the heartbeat POST handler, followers subscribe and
+fetch — Ably first (free 200 conns/6M msgs, presence, ~half a day), then
+Cloudflare Durable Objects/PartyServer, then Upstash. Revisit triggers:
+(1) ≤5s skip propagation feels laggy in real sessions; (2) >~20
+concurrent users; (3) Vercel ships first-party pub/sub; (4) Vercel
+Hobby **Active CPU** (4 hrs/month — the tight quota; overage pauses the
+project 30 days) trends toward its cap in the dashboard.
+
 ## Next / ideas
 
+- **Slipstream follow-ups** — private-listening opt-out toggle (one
+  `users` column + a `WHERE`, the heartbeat POST early-returns); preview
+  badge for `access: "preview"` tracks (30s snippets via the API).
 - **Visualization redesign pass** — the M4 scenes work but Chris has
   redesign ideas; the `Scene` interface (`lib/viz/scene.ts`) makes visual
   rework independent of the DSP/analysis layer.
@@ -16,6 +39,47 @@ record. The README stays a clean front page — history lives here.
 - **Tauri client** — native shell on this same backend.
 
 ## Shipped
+
+### Milestone 5 — slipstream: shared live listening (2026-07-13)
+
+A live "listening now" sidebar feed of what members are playing (always-on
+presence via heartbeats), and joinable slipstreams: follow a member's live
+queue read-only, position-synced over polling. Pure sync engine
+(`lib/slipstream.ts`: expected-position extrapolation with server-clock
+offset, drift-seek, optimistic-advance + early-end holds); per-source
+capabilities seam (`lib/sources.ts`) gates transport UI and paves the way
+for radio/related continuation; one upserted presence row per host with a
+10-track jsonb window (metadata only — every listener resolves streams via
+their own token and quota; publisher is inert while following, so chained
+follows are impossible by construction). Joining parks the local queue
+(state, localStorage, and in-track position untouched); leaving or host
+staleness restores it exactly. Riders: collapsible sidebar sections,
+design north star in CLAUDE.md, plain-text README tagline (Spotify
+comparison dropped).
+
+Validation:
+- 152 unit tests green (36 new: sync-plan precedence, holds, drift
+  boundaries, window advance, heartbeat validation; caps rows); typecheck
+  + build clean.
+- Schema applied idempotently (twice) over live data.
+- Routes (curl, minted sessions): anonymous → 401 on all three; malformed
+  /oversized-window heartbeat → 400; self-snapshot → 400; missing/stale
+  host → 404; keepalive-without-window preserves the stored window
+  (COALESCE); pause beat drops the host from the feed immediately.
+- Host publishing (live browser): row upserts on play with real track +
+  10-track window; pause writes playing:false; keepalive bumps updated_at.
+- Follower (two sessions, real tracks): join landed ~0.5 s off the
+  extrapolated host playhead; host track change propagated in ≤1 poll; an
+  unresolvable window lead 422'd, refunded quota, and was skipped
+  in-window silently; local pause stuck across polls; leave and
+  host-went-stale both restored the parked queue — persisted queue state
+  byte-identical, playback resumed at the parked in-track position;
+  reload while following landed on the local queue, not following;
+  `nimbus.queue.v1` never contained a host track.
+- UI (playwright-cli): feed hidden when empty; inert "(you)" row; active
+  host row accent + leave; transport/seek disabled while following with
+  read-only queue panel ("up next · from {host}", parked-queue return
+  strip); sidebar sections collapse/expand with persisted state.
 
 ### Milestone 4 — visualization system + shuffle modes (2026-07-12)
 

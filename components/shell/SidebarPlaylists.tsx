@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import type { ProviderPlaylist } from "@/lib/provider";
+import { SidebarSection } from "./SidebarSection";
 
 export function SidebarPlaylists({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
@@ -40,10 +41,7 @@ export function SidebarPlaylists({ onNavigate }: { onNavigate?: () => void }) {
   if (playlists.length === 0) return null;
 
   return (
-    <div className="min-h-0">
-      <p className="mb-2 text-xs tracking-widest text-muted uppercase">
-        Playlists
-      </p>
+    <SidebarSection id="playlists" title="Playlists">
       <ul className="space-y-0.5">
         {playlists.map((p) => {
           const href = `/playlists/${p.id}`;
@@ -66,6 +64,6 @@ export function SidebarPlaylists({ onNavigate }: { onNavigate?: () => void }) {
           );
         })}
       </ul>
-    </div>
+    </SidebarSection>
   );
 }
