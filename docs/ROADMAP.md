@@ -34,6 +34,30 @@ project 30 days) trends toward its cap in the dashboard.
 - **Recently played** — views on top of `track_plays`
   (`ORDER BY last_played_at DESC` is already indexed).
 - **Tauri client** — native shell on this same backend.
+- **Cast to TV (Google Cast)** — play the stage + viz on a television.
+  Shape: a Custom Web Receiver (a small self-hosted page — can be a route
+  on this same Vercel app; $5 one-time Cast Developer Console
+  registration, dev devices registered by serial), with the existing app
+  as sender via the Cast Web Sender SDK (Chrome-only, HTTPS — both
+  already true). The sender resolves plays through the normal
+  `/api/tracks/[id]/play` quota path and ships the signed CDN URL to the
+  receiver over the Cast custom-message channel; the receiver's `<audio>`
+  streams direct from the CDN, so the token-broker constraint holds and
+  no realtime infra is needed (the Cast channel is device-local). The
+  receiver is Chromium, so `lib/viz/` and the scenes reuse unchanged —
+  the M1 CORS verdict (`cf-media.sndcdn.com` serves ACAO:*) should carry
+  over, but verify `MediaElementSource` on real hardware first. Main
+  risk: weak CPUs on old Chromecast dongles — plan a "TV profile" of the
+  SceneHost throttles (fewer bars/particles, 30fps cap); recent
+  Google TV devices are fine.
+
+Direction decisions (2026-07-13): **mobile is out of scope** for now —
+nobody in the friend group wants it. **Viz stays pure TS + AnalyserNode —
+no WASM**: the FFT is already native in the analyser, the TS layers do
+~400k ops/sec total, and frame cost is canvas painting, which WASM can't
+touch. If viz perf ever hurts: tune the existing adaptive throttles →
+OffscreenCanvas worker → WebGL/WebGPU → only then WASM+SIMD. Staying
+plain-web also keeps a future Cast receiver a plain page.
 
 ## Shipped
 
