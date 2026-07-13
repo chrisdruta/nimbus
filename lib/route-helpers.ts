@@ -7,7 +7,11 @@ import {
   type Session,
 } from "./session";
 import { ReauthRequiredError } from "./tokens";
-import { ProviderAuthError, TrackUnavailableError } from "./provider";
+import {
+  InvalidCursorError,
+  ProviderAuthError,
+  TrackUnavailableError,
+} from "./provider";
 import { QuotaExceededError } from "./quota";
 import { consumeRateLimit, RateLimitError } from "./rate-limit";
 
@@ -35,7 +39,7 @@ function toResponse(err: unknown): NextResponse {
       { status: 403, headers: privateHeaders },
     );
   }
-  if (err instanceof BadRequestError) {
+  if (err instanceof BadRequestError || err instanceof InvalidCursorError) {
     return NextResponse.json(
       { error: err.message },
       { status: 400, headers: privateHeaders },

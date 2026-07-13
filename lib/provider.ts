@@ -60,6 +60,9 @@ export class ProviderAuthError extends Error {}
 /** This specific track cannot be streamed (blocked/region/API-disabled). */
 export class TrackUnavailableError extends Error {}
 
+/** A pagination cursor failed integrity or route-binding validation. */
+export class InvalidCursorError extends Error {}
+
 export interface MusicProvider {
   /** Where to send the user's browser to authorize (OAuth 2.1 + PKCE). */
   authorizeUrl(params: { state: string; codeChallenge: string }): string;

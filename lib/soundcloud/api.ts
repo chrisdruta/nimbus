@@ -1,4 +1,6 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import {
+  InvalidCursorError,
   ProviderAuthError,
   TrackUnavailableError,
   type ProviderFeedItem,
@@ -15,6 +17,8 @@ const MAX_ATTEMPTS = 3;
 const BACKOFF_BASE_MS = 250;
 const RETRY_AFTER_CAP_MS = 2000;
 const REQUEST_TIMEOUT_MS = 10_000;
+const CURSOR_MAC_BYTES = 32;
+const CURSOR_VERSION = 1;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -24,8 +28,8 @@ function retryDelay(res: Response | null, attempt: number): number {
   return BACKOFF_BASE_MS * 2 ** attempt * (0.5 + Math.random());
 }
 
-/** Accepts a path or a full URL (pagination follows next_href); full URLs
- * must be on the SC API origin — cursors are client-supplied. */
+/** Accepts a path or a full URL; full URLs must be on the SC API origin.
+ * Pagination URLs receive stronger signature + path checks below. */
 function apiUrl(pathOrUrl: string): string {
   if (!pathOrUrl.startsWith("http")) return `${API_URL}${pathOrUrl}`;
   if (new URL(pathOrUrl).origin !== API_URL) {
@@ -123,14 +127,84 @@ async function scFetch(
   );
 }
 
-/** Cursors are base64url-wrapped next_href URLs; apiUrl() re-validates the
- * origin after decode since they round-trip through the client. */
-function encodeCursor(nextHref: string): string {
-  return Buffer.from(nextHref, "utf8").toString("base64url");
+function cursorKey(): Buffer {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret || Buffer.byteLength(secret, "utf8") < 32) {
+    throw new Error("SESSION_SECRET must be at least 32 bytes");
+  }
+  return Buffer.from(secret, "utf8");
 }
 
-function decodeCursor(cursor: string): string {
-  return Buffer.from(cursor, "base64url").toString("utf8");
+function cursorMac(payload: Buffer, key: Buffer = cursorKey()): Buffer {
+  return createHmac("sha256", key)
+    .update("nimbus:pagination:v1\0", "utf8")
+    .update(payload)
+    .digest();
+}
+
+function paginationUrl(nextHref: string, expectedPath: string): string {
+  const url = new URL(nextHref, API_URL);
+  if (
+    url.protocol !== "https:" ||
+    url.origin !== API_URL ||
+    url.pathname !== expectedPath ||
+    url.username !== "" ||
+    url.password !== ""
+  ) {
+    throw new Error("provider returned an invalid pagination URL");
+  }
+  return url.toString();
+}
+
+/** Cursors carry an HMAC-authenticated next_href and the exact collection
+ * path that issued it. This prevents clients from turning a discovery route
+ * into an authenticated request oracle for other SoundCloud endpoints. */
+function encodeCursor(nextHref: string, expectedPath: string): string {
+  const payload = Buffer.from(
+    JSON.stringify({
+      v: CURSOR_VERSION,
+      path: expectedPath,
+      url: paginationUrl(nextHref, expectedPath),
+    }),
+    "utf8",
+  );
+  return Buffer.concat([payload, cursorMac(payload)]).toString("base64url");
+}
+
+function decodeCursor(cursor: string, expectedPath: string): string {
+  // Configuration failures are server errors, not malformed client input.
+  const key = cursorKey();
+  try {
+    const packed = Buffer.from(cursor, "base64url");
+    if (packed.toString("base64url") !== cursor) {
+      throw new Error("non-canonical cursor encoding");
+    }
+    if (packed.length <= CURSOR_MAC_BYTES) {
+      throw new Error("truncated cursor");
+    }
+    const payload = packed.subarray(0, -CURSOR_MAC_BYTES);
+    const suppliedMac = packed.subarray(-CURSOR_MAC_BYTES);
+    const expectedMac = cursorMac(payload, key);
+    if (!timingSafeEqual(suppliedMac, expectedMac)) {
+      throw new Error("bad cursor signature");
+    }
+    const parsed = JSON.parse(payload.toString("utf8")) as unknown;
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      (parsed as { v?: unknown }).v !== CURSOR_VERSION ||
+      (parsed as { path?: unknown }).path !== expectedPath ||
+      typeof (parsed as { url?: unknown }).url !== "string"
+    ) {
+      throw new Error("cursor scope mismatch");
+    }
+    return paginationUrl(
+      (parsed as { url: string }).url,
+      expectedPath,
+    );
+  } catch {
+    throw new InvalidCursorError("malformed pagination cursor");
+  }
 }
 
 interface ScUser {
@@ -193,12 +267,13 @@ function toPlaylist(p: ScPlaylist): ProviderPlaylist {
 function toPage<S, T>(
   data: ScPartitioned<S> | S[],
   map: (item: S) => T,
+  expectedPath: string,
 ): ProviderPage<T> {
   const items = Array.isArray(data) ? data : (data.collection ?? []);
   const nextHref = Array.isArray(data) ? null : data.next_href;
   return {
     items: items.map(map),
-    nextCursor: nextHref ? encodeCursor(nextHref) : null,
+    nextCursor: nextHref ? encodeCursor(nextHref, expectedPath) : null,
   };
 }
 
@@ -216,24 +291,26 @@ export async function getLikesPage(
   accessToken: string,
   cursor?: string,
 ): Promise<ProviderPage<ProviderTrack>> {
+  const path = "/me/likes/tracks";
   const url = cursor
-    ? decodeCursor(cursor)
-    : "/me/likes/tracks?limit=200&linked_partitioning=true";
+    ? decodeCursor(cursor, path)
+    : `${path}?limit=200&linked_partitioning=true`;
   const data = (await scFetch(url, accessToken)) as
     ScPartitioned<ScTrack> | ScTrack[];
-  return toPage(data, toTrack);
+  return toPage(data, toTrack, path);
 }
 
 export async function getPlaylists(
   accessToken: string,
   cursor?: string,
 ): Promise<ProviderPage<ProviderPlaylist>> {
+  const path = "/me/playlists";
   const url = cursor
-    ? decodeCursor(cursor)
-    : "/me/playlists?limit=20&linked_partitioning=true&show_tracks=false";
+    ? decodeCursor(cursor, path)
+    : `${path}?limit=20&linked_partitioning=true&show_tracks=false`;
   const data = (await scFetch(url, accessToken)) as
     ScPartitioned<ScPlaylist> | ScPlaylist[];
-  return toPage(data, toPlaylist);
+  return toPage(data, toPlaylist, path);
 }
 
 export async function getPlaylistTracks(
@@ -241,12 +318,13 @@ export async function getPlaylistTracks(
   playlistId: number,
   cursor?: string,
 ): Promise<ProviderPage<ProviderTrack>> {
+  const path = `/playlists/${playlistId}/tracks`;
   const url = cursor
-    ? decodeCursor(cursor)
-    : `/playlists/${playlistId}/tracks?limit=200&linked_partitioning=true`;
+    ? decodeCursor(cursor, path)
+    : `${path}?limit=200&linked_partitioning=true`;
   const data = (await scFetch(url, accessToken)) as
     ScPartitioned<ScTrack> | ScTrack[];
-  return toPage(data, toTrack);
+  return toPage(data, toTrack, path);
 }
 
 export async function getRelatedTracks(
@@ -254,12 +332,13 @@ export async function getRelatedTracks(
   trackId: number,
   cursor?: string,
 ): Promise<ProviderPage<ProviderTrack>> {
+  const path = `/tracks/${trackId}/related`;
   const url = cursor
-    ? decodeCursor(cursor)
-    : `/tracks/${trackId}/related?limit=50&linked_partitioning=true`;
+    ? decodeCursor(cursor, path)
+    : `${path}?limit=50&linked_partitioning=true`;
   const data = (await scFetch(url, accessToken)) as
     ScPartitioned<ScTrack> | ScTrack[];
-  return toPage(data, toTrack);
+  return toPage(data, toTrack, path);
 }
 
 /** /me/feed/tracks activity item: the track rides in `origin`; `reposter`
@@ -280,12 +359,13 @@ export async function getFeedPage(
   accessToken: string,
   cursor?: string,
 ): Promise<ProviderPage<ProviderFeedItem>> {
+  const path = "/me/feed/tracks";
   const url = cursor
-    ? decodeCursor(cursor)
-    : "/me/feed/tracks?limit=50&linked_partitioning=true";
+    ? decodeCursor(cursor, path)
+    : `${path}?limit=50&linked_partitioning=true`;
   const data = (await scFetch(url, accessToken)) as
     ScPartitioned<ScFeedItem> | ScFeedItem[];
-  const page = toPage(data, toFeedItem);
+  const page = toPage(data, toFeedItem, path);
   return {
     items: page.items.filter((i): i is ProviderFeedItem => i !== null),
     nextCursor: page.nextCursor,
