@@ -67,6 +67,19 @@ interface and types from `lib/provider.ts`. UI and API routes must never
 depend on raw provider responses — this seam is what makes a future provider
 swap an env-var-and-one-directory change.
 
+**SoundCloud API sources.** When touching `lib/soundcloud/`, verify endpoints
+and parameters against the official docs — never invent them: the
+[OpenAPI explorer](https://developers.soundcloud.com/docs/api/explorer/open-api)
+(spec JSON at `/docs/api/explorer/api.json`,
+[YAML on GitHub](https://github.com/soundcloud/api/blob/master/openapi/api.yaml)),
+the [API Guide](https://developers.soundcloud.com/docs/api/guide) (auth,
+playback, pagination, errors), and the
+[LLM context page](https://developers.soundcloud.com/docs/llm-context).
+Wire conventions (`Authorization: OAuth <token>`, token host
+`secure.soundcloud.com`, `linked_partitioning` pagination, 429 backoff,
+`access`/`streamable` states) are already encoded in `lib/soundcloud/` —
+match the existing code.
+
 **Auth model.** OAuth 2.1 + PKCE; PKCE state (and any invite code) rides a
 signed, short-lived HttpOnly cookie — never the SoundCloud redirect. Production
 cookies use `__Host-`/`__Secure-` prefixes. Sessions are typed, issuer/audience-
