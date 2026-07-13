@@ -104,6 +104,28 @@ export async function upsertUser(fields: UpsertUserFields): Promise<UserRow> {
   return toUserRow(rows[0]);
 }
 
+/**
+ * Refresh the cached profile columns (shown by admin and slipstream) from a
+ * live provider fetch. Tokens are untouched; rotation owns those.
+ */
+export async function updateUserProfile(
+  id: number,
+  fields: {
+    scPermalink: string | null;
+    scUsername: string | null;
+    avatarUrl: string | null;
+  },
+): Promise<void> {
+  await sql()`
+    UPDATE users
+    SET sc_permalink = ${fields.scPermalink},
+        sc_username = ${fields.scUsername},
+        avatar_url = ${fields.avatarUrl},
+        updated_at = now()
+    WHERE id = ${id}
+  `;
+}
+
 /** Slim membership check run on every authed request. */
 export async function getUserAuth(
   id: number,
