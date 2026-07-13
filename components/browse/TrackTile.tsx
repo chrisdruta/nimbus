@@ -2,7 +2,7 @@
 
 import { memo } from "react";
 import { artworkSized } from "@/lib/artwork";
-import { IconCloud, IconPlay } from "@/components/ui/icons";
+import { IconCloud, IconPlay, IconRadio } from "@/components/ui/icons";
 import type { ProviderTrack } from "@/lib/provider";
 
 function Equalizer() {
@@ -23,17 +23,34 @@ export const TrackTile = memo(function TrackTile({
   track,
   isCurrent,
   onPlay,
+  onStartRadio,
+  reposted,
 }: {
   track: ProviderTrack;
   isCurrent: boolean;
   onPlay: () => void;
+  /** Renders a hover "start radio" affordance when provided. */
+  onStartRadio?: () => void;
+  /** Feed items: this track reached the feed as a repost. */
+  reposted?: boolean;
 }) {
   const art = artworkSized(track.artworkUrl, "t300x300");
 
   return (
-    <button
-      onClick={onPlay}
-      disabled={!track.streamable}
+    // A div with button semantics — the radio affordance is a real <button>
+    // inside, and buttons can't nest.
+    <div
+      role="button"
+      tabIndex={track.streamable ? 0 : -1}
+      aria-disabled={!track.streamable}
+      onClick={track.streamable ? onPlay : undefined}
+      onKeyDown={(e) => {
+        if (!track.streamable) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onPlay();
+        }
+      }}
       title={
         track.streamable
           ? `${track.title} — ${track.artist}`
@@ -65,6 +82,11 @@ export const TrackTile = memo(function TrackTile({
         <span className="truncate max-w-full bg-black/75 px-1.5 py-0.5 text-xs text-muted backdrop-blur-sm">
           {track.streamable ? track.artist : "unavailable"}
         </span>
+        {reposted && (
+          <span className="bg-black/75 px-1.5 py-0.5 text-[10px] text-muted backdrop-blur-sm">
+            ↻ repost
+          </span>
+        )}
       </span>
 
       {track.streamable && !isCurrent && (
@@ -74,7 +96,20 @@ export const TrackTile = memo(function TrackTile({
           </span>
         </span>
       )}
+      {track.streamable && onStartRadio && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onStartRadio();
+          }}
+          aria-label="start radio"
+          title="start radio"
+          className="absolute bottom-2 left-2 flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-black/75 text-muted opacity-0 transition group-hover:opacity-100 hover:text-white"
+        >
+          <IconRadio size={14} />
+        </button>
+      )}
       {isCurrent && <Equalizer />}
-    </button>
+    </div>
   );
 });

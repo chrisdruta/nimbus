@@ -13,6 +13,7 @@ import {
   Pause,
   PanelRightClose,
   Play,
+  Radio,
   Repeat,
   Share,
   Shuffle,
@@ -68,6 +69,9 @@ export const IconExpand = ({ size = 20, ...p }: IconProps) => (
 );
 export const IconShare = ({ size = 20, ...p }: IconProps) => (
   <Share size={size} {...p} />
+);
+export const IconRadio = ({ size = 20, ...p }: IconProps) => (
+  <Radio size={size} {...p} />
 );
 export const IconMenu = ({ size = 20, ...p }: IconProps) => (
   <Menu size={size} {...p} />

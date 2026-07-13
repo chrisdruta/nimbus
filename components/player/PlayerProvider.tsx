@@ -37,6 +37,13 @@ import {
 } from "@/lib/queue";
 import { capsOf, sourceKindOf, type SourceCapabilities } from "@/lib/sources";
 import {
+  filterFresh,
+  nextSeed,
+  radioSourceId,
+  shouldRefill,
+  RADIO_SEED_ATTEMPTS,
+} from "@/lib/radio";
+import {
   POLL_MS,
   WINDOW_SIZE,
   clockOffset,
@@ -137,6 +144,8 @@ export interface PlayerActions {
   nextTrack(): void;
   prevTrack(): void;
   jumpToTrack(trackId: number): void;
+  /** Start an infinite related-tracks station seeded from one track. */
+  startRadio(track: QueueTrack): void;
   toggleShuffleMode(): void;
   /** Switch shuffle algorithm; turns shuffle on and reshuffles. */
   setShuffleMode(mode: ShuffleMode): void;
@@ -213,6 +222,13 @@ export function PlayerProvider({
   const queueRef = useRef<QueueState | null>(null);
   const metaRef = useRef<Map<number, QueueTrack>>(new Map());
   const failStreakRef = useRef(0);
+  // ------------------------------------------------------- radio (session)
+  /** Shared in-flight refill so concurrent triggers await one fetch pass. */
+  const radioRefillRef = useRef<Promise<boolean> | null>(null);
+  /** Seeds whose related lists yielded nothing new this session. */
+  const radioTriedSeedsRef = useRef<Set<number>>(new Set());
+  /** Every seed candidate is exhausted — the station is dry. */
+  const radioEndedRef = useRef(false);
   const playsRef = useRef<
     Map<number, { playCount: number; lastPlayedAt: number }>
   >(new Map());
@@ -256,6 +272,9 @@ export function PlayerProvider({
       if (persisted.currentTrack) {
         metaRef.current.set(persisted.currentTrack.id, persisted.currentTrack);
       }
+      // Self-contained sources (radio, feed) have no library walk to refill
+      // the metadata cache — restore their persisted snapshot.
+      for (const t of persisted.tracks ?? []) metaRef.current.set(t.id, t);
     }
     const storedVolume = Number(localStorage.getItem(VOLUME_KEY));
     if (storedVolume >= 0 && storedVolume <= 1 && !Number.isNaN(storedVolume)) {
@@ -269,7 +288,13 @@ export function PlayerProvider({
   // not overwrite the parked local snapshot.
   useEffect(() => {
     if (followRef.current) return;
-    if (queue) saveQueue(userId, queue, current);
+    if (!queue) return;
+    const snapshot = capsOf(sourceKindOf(queue.sourceId)).restoresFromLibrary
+      ? undefined
+      : queue.order
+          .map((id) => metaRef.current.get(id))
+          .filter((t): t is QueueTrack => t !== undefined);
+    saveQueue(userId, queue, current, snapshot);
   }, [queue, current, userId]);
 
   useEffect(() => {
@@ -513,6 +538,56 @@ export function PlayerProvider({
     [ensureGraph, loadStream, resolveStream, setQueue, toast],
   );
 
+  // ---------------------------------------------------------------- radio
+
+  /** Grow a radio queue with related tracks: try seeds (current → history →
+   * original) until one yields fresh ids. Resolves true when the queue grew.
+   * Related fetches are discovery calls — they never touch the fail streak
+   * or quota; a transient failure just leaves the next trigger to retry. */
+  const refillRadio = useCallback((): Promise<boolean> => {
+    if (radioRefillRef.current) return radioRefillRef.current;
+    const sourceId = queueRef.current?.sourceId;
+    if (
+      !sourceId ||
+      sourceKindOf(sourceId) !== "radio" ||
+      radioEndedRef.current ||
+      followRef.current
+    ) {
+      return Promise.resolve(false);
+    }
+    const run = async (): Promise<boolean> => {
+      for (let attempt = 0; attempt < RADIO_SEED_ATTEMPTS; attempt++) {
+        const q = queueRef.current;
+        // The user may have switched sources while we were fetching.
+        if (!q || q.sourceId !== sourceId) return false;
+        const seedId = nextSeed(q, radioTriedSeedsRef.current);
+        if (seedId === null) break;
+        const res = await fetch(`/api/tracks/${seedId}/related`).catch(
+          () => null,
+        );
+        if (!res?.ok) return false; // transient — the next trigger retries
+        const { tracks } = (await res.json()) as { tracks: ProviderTrack[] };
+        const now = queueRef.current;
+        if (!now || now.sourceId !== sourceId) return false;
+        for (const t of tracks) metaRef.current.set(t.id, toQueueTrack(t));
+        const candidates = tracks.filter((t) => t.streamable).map((t) => t.id);
+        const fresh = filterFresh(candidates, now);
+        if (fresh.length > 0) {
+          setQueue(integrate(now, fresh, buildCtx()));
+          return true;
+        }
+        radioTriedSeedsRef.current.add(seedId);
+      }
+      radioEndedRef.current = true;
+      return false;
+    };
+    const inFlight = run().finally(() => {
+      radioRefillRef.current = null;
+    });
+    radioRefillRef.current = inFlight;
+    return inFlight;
+  }, [buildCtx, setQueue]);
+
   const advance = useCallback(() => {
     const q = queueRef.current;
     if (!q) return;
@@ -520,12 +595,30 @@ export function PlayerProvider({
     setQueue(state);
     if (ended) {
       setPlaying(false);
+      if (sourceKindOf(state.sourceId) === "radio") {
+        // Normally the low-water refill keeps this unreachable; hitting it
+        // means the fetch lost the race (or the station is dry). Wait it
+        // out and step forward if the queue grew.
+        void refillRadio().then((grew) => {
+          if (grew) advanceRef.current();
+          else if (radioEndedRef.current) {
+            toast("radio ran out of related tracks");
+          }
+        });
+      }
       return;
     }
     const id = currentTrackId(state);
     if (id !== null) void resolveAndPlay(id);
-  }, [resolveAndPlay, setQueue]);
+  }, [refillRadio, resolveAndPlay, setQueue, toast]);
   advanceRef.current = advance;
+
+  // Prefetch more of the station a few tracks before it runs out.
+  useEffect(() => {
+    if (!queue || followRef.current) return;
+    if (sourceKindOf(queue.sourceId) !== "radio") return;
+    if (shouldRefill(queue)) void refillRadio();
+  }, [queue, refillRadio]);
 
   // -------------------------------------------------- slipstream follower
 
@@ -923,6 +1016,26 @@ export function PlayerProvider({
         const jumped = jumpTo(q, trackId);
         setQueue(jumped);
         void resolveAndPlay(trackId);
+      },
+
+      startRadio(track) {
+        // Choosing your own music is an implicit leave.
+        if (followRef.current) leaveSlipstreamRef.current();
+        pendingSeekRef.current = null;
+        radioTriedSeedsRef.current = new Set();
+        radioEndedRef.current = false;
+        failStreakRef.current = 0;
+        metaRef.current.set(track.id, track);
+        // The seed plays immediately; the refill machinery fills in the
+        // station behind it.
+        const q = createQueue(radioSourceId(track.id), [track.id], {
+          startTrackId: track.id,
+          shuffleMode: queueRef.current?.shuffleMode ?? "classic",
+        });
+        setQueue(q);
+        void resolveAndPlay(track.id);
+        void refillRadio();
+        toast(`radio · ${track.title}`);
       },
 
       toggleShuffleMode() {

@@ -462,7 +462,23 @@ export function reconcile(
 export interface PersistedQueue {
   state: QueueState;
   currentTrack: QueueTrack | null;
+  /** Metadata snapshot for sources with no backing library walk to
+   * repopulate the cache after reload (radio, feed). */
+  tracks?: QueueTrack[];
   savedAt: number;
+}
+
+function isQueueTrack(t: unknown): t is QueueTrack {
+  const x = t as QueueTrack;
+  return (
+    typeof x?.id === "number" &&
+    typeof x.title === "string" &&
+    typeof x.artist === "string" &&
+    typeof x.artistUrl === "string" &&
+    (x.artworkUrl === null || typeof x.artworkUrl === "string") &&
+    typeof x.permalinkUrl === "string" &&
+    typeof x.durationMs === "number"
+  );
 }
 
 function storage(): Storage | null {
@@ -473,8 +489,14 @@ export function saveQueue(
   userId: number,
   state: QueueState,
   currentTrack: QueueTrack | null,
+  tracks?: QueueTrack[],
 ): void {
-  const payload: PersistedQueue = { state, currentTrack, savedAt: Date.now() };
+  const payload: PersistedQueue = {
+    state,
+    currentTrack,
+    ...(tracks ? { tracks } : {}),
+    savedAt: Date.now(),
+  };
   try {
     storage()?.setItem(storageKey(userId), JSON.stringify(payload));
   } catch {
@@ -511,6 +533,9 @@ export function loadQueue(userId: number): PersistedQueue | null {
           : "classic",
       },
       currentTrack: parsed.currentTrack ?? null,
+      tracks: Array.isArray(parsed.tracks)
+        ? parsed.tracks.filter(isQueueTrack)
+        : undefined,
       savedAt: parsed.savedAt ?? 0,
     };
   } catch {

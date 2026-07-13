@@ -4,6 +4,7 @@ import { artworkSized } from "@/lib/artwork";
 import { IconCloud, IconPanelRight } from "@/components/ui/icons";
 import { formatDuration } from "@/lib/format";
 import { currentTrackId, type QueueTrack } from "@/lib/queue";
+import { radioSeedOf } from "@/lib/radio";
 import type { FeedRow } from "@/components/slipstream/useSlipstreamFeed";
 import { usePlayerActions, usePlayerState } from "./PlayerProvider";
 
@@ -136,13 +137,19 @@ export function SidePanel({
   const actions = usePlayerActions();
   const upNext = actions.upcomingTracks(40);
   const hostName = slipstream?.host.username ?? "member";
+  const radioSeed =
+    !slipstream && queue ? radioSeedOf(queue.sourceId) : null;
+  const radioSeedTitle =
+    radioSeed !== null ? actions.getMeta(radioSeed)?.title : undefined;
   const upNextLabel = slipstream
     ? `up next · from ${hostName}`
-    : shuffled
-      ? shuffleMode === "classic"
-        ? "up next · shuffled"
-        : `up next · shuffled (${shuffleMode})`
-      : "up next";
+    : radioSeed !== null
+      ? "up next · radio"
+      : shuffled
+        ? shuffleMode === "classic"
+          ? "up next · shuffled"
+          : `up next · shuffled (${shuffleMode})`
+        : "up next";
   // The queue engine still holds the parked local queue while following.
   const parkedId = slipstream && queue ? currentTrackId(queue) : null;
   const parked = parkedId !== null ? actions.getMeta(parkedId) : undefined;
@@ -162,6 +169,13 @@ export function SidePanel({
           <IconPanelRight size={16} />
         </button>
       </div>
+      {!slipstream && radioSeedTitle && (
+        <div className="px-4 pb-2">
+          <span className="block truncate text-xs text-accent">
+            radio · {radioSeedTitle}
+          </span>
+        </div>
+      )}
       {slipstream && (
         <div className="flex items-center justify-between px-4 pb-2">
           <span className="truncate text-xs text-accent">

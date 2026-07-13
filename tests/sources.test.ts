@@ -7,6 +7,7 @@ describe("sourceKindOf", () => {
     expect(sourceKindOf("playlist:2")).toBe("playlist");
     expect(sourceKindOf("playlist:184623")).toBe("playlist");
     expect(sourceKindOf("radio:track:9")).toBe("radio");
+    expect(sourceKindOf("feed")).toBe("feed");
   });
 
   test("unknown ids fall back to the default local source", () => {
@@ -25,7 +26,14 @@ describe("capsOf", () => {
         canRepeat: true,
         canSeek: true,
         persists: true,
+        restoresFromLibrary: true,
       });
+    }
+  });
+
+  test("self-contained sources persist their own metadata", () => {
+    for (const kind of ["radio", "feed", "slipstream"] as const) {
+      expect(capsOf(kind).restoresFromLibrary).toBe(false);
     }
   });
 
@@ -37,7 +45,7 @@ describe("capsOf", () => {
 
   test("every kind has a caps row", () => {
     expect(Object.keys(CAPS).sort()).toEqual(
-      ["likes", "playlist", "radio", "slipstream"].sort(),
+      ["likes", "playlist", "radio", "slipstream", "feed"].sort(),
     );
   });
 });

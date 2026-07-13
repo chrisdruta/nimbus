@@ -1,6 +1,7 @@
 import {
   ProviderAuthError,
   TrackUnavailableError,
+  type ProviderFeedItem,
   type ProviderPage,
   type ProviderPlaylist,
   type ProviderStream,
@@ -246,6 +247,49 @@ export async function getPlaylistTracks(
   const data = (await scFetch(url, accessToken)) as
     ScPartitioned<ScTrack> | ScTrack[];
   return toPage(data, toTrack);
+}
+
+export async function getRelatedTracks(
+  accessToken: string,
+  trackId: number,
+  cursor?: string,
+): Promise<ProviderPage<ProviderTrack>> {
+  const url = cursor
+    ? decodeCursor(cursor)
+    : `/tracks/${trackId}/related?limit=50&linked_partitioning=true`;
+  const data = (await scFetch(url, accessToken)) as
+    ScPartitioned<ScTrack> | ScTrack[];
+  return toPage(data, toTrack);
+}
+
+/** /me/feed/tracks activity item: the track rides in `origin`; `reposter`
+ * is a bare user URN string on repost items (no display name available). */
+interface ScFeedItem {
+  type?: string;
+  origin?: ScTrack | null;
+  reposter?: string;
+}
+
+function toFeedItem(item: ScFeedItem): ProviderFeedItem | null {
+  const t = item?.origin;
+  if (typeof t?.id !== "number" || typeof t.title !== "string") return null;
+  return { track: toTrack(t), reposted: item.type === "track:repost" };
+}
+
+export async function getFeedPage(
+  accessToken: string,
+  cursor?: string,
+): Promise<ProviderPage<ProviderFeedItem>> {
+  const url = cursor
+    ? decodeCursor(cursor)
+    : "/me/feed/tracks?limit=50&linked_partitioning=true";
+  const data = (await scFetch(url, accessToken)) as
+    ScPartitioned<ScFeedItem> | ScFeedItem[];
+  const page = toPage(data, toFeedItem);
+  return {
+    items: page.items.filter((i): i is ProviderFeedItem => i !== null),
+    nextCursor: page.nextCursor,
+  };
 }
 
 interface ScStreams {

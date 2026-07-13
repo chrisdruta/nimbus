@@ -304,6 +304,49 @@ describe("persistence", () => {
     expect(loaded?.state.shuffleMode).toBe("classic");
   });
 
+  test("round-trips the optional metadata snapshot", () => {
+    const q = createQueue("radio:track:10", IDS, { startTrackId: 10 });
+    const track = (id: number) => ({
+      id,
+      title: `t${id}`,
+      artist: "a",
+      artistUrl: "",
+      artworkUrl: null,
+      permalinkUrl: "",
+      durationMs: 1000,
+    });
+    saveQueue(USER_ID, q, track(10), IDS.map(track));
+    expect(loadQueue(USER_ID)?.tracks).toEqual(IDS.map(track));
+    // Without the snapshot the field stays absent.
+    saveQueue(USER_ID, q, track(10));
+    expect(loadQueue(USER_ID)?.tracks).toBeUndefined();
+  });
+
+  test("drops malformed snapshot entries without killing the queue", () => {
+    const q = createQueue("radio:track:10", IDS);
+    const good = {
+      id: 10,
+      title: "t",
+      artist: "a",
+      artistUrl: "",
+      artworkUrl: null,
+      permalinkUrl: "",
+      durationMs: 1000,
+    };
+    store.set(
+      `nimbus.queue.v1:${USER_ID}`,
+      JSON.stringify({
+        state: q,
+        currentTrack: null,
+        tracks: [good, { id: "nope" }, null, { ...good, durationMs: "x" }],
+        savedAt: 1,
+      }),
+    );
+    const loaded = loadQueue(USER_ID);
+    expect(loaded?.state).toEqual(q);
+    expect(loaded?.tracks).toEqual([good]);
+  });
+
   test("round-trips shuffleMode", () => {
     let q = createQueue("likes", IDS, { shuffle: true, startTrackId: 10 });
     q = setShuffleMode(q, "artist-spaced");

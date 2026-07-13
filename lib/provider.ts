@@ -36,6 +36,13 @@ export interface ProviderPlaylist {
   durationMs: number;
 }
 
+export interface ProviderFeedItem {
+  track: ProviderTrack;
+  /** True when the item reached the feed as a repost. The public API only
+   * exposes the reposter as a bare URN, so there is no name to show. */
+  reposted: boolean;
+}
+
 export interface ProviderStream {
   url: string;
   protocol: "progressive" | "hls" | "unknown";
@@ -72,6 +79,15 @@ export interface MusicProvider {
     playlistId: number,
     cursor?: string,
   ): Promise<ProviderPage<ProviderTrack>>;
+  getRelatedTracks(
+    accessToken: string,
+    trackId: number,
+    cursor?: string,
+  ): Promise<ProviderPage<ProviderTrack>>;
+  getFeedPage(
+    accessToken: string,
+    cursor?: string,
+  ): Promise<ProviderPage<ProviderFeedItem>>;
   resolveStream(accessToken: string, trackId: number): Promise<ProviderStream>;
 }
 

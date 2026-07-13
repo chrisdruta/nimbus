@@ -90,6 +90,17 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         >
           Liked Tracks
         </Link>
+        <Link
+          href="/feed"
+          onClick={onNavigate}
+          className={`-mx-2 block rounded px-2 py-1.5 text-sm transition ${
+            pathname === "/feed"
+              ? "border-l-2 border-accent bg-white/5 text-white"
+              : "text-muted hover:text-white"
+          }`}
+        >
+          Feed
+        </Link>
         {me?.isOwner && (
           <Link
             href="/admin"

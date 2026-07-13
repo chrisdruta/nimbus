@@ -29,8 +29,14 @@ project 30 days) trends toward its cap in the dashboard.
 - **Slipstream follow-ups** — private-listening opt-out toggle (one
   `users` column + a `WHERE`, the heartbeat POST early-returns); preview
   badge for `access: "preview"` tracks (30s snippets via the API).
-- **Feed / reposts / related-track continuation** — keep playback going
-  past the end of a collection.
+- **Collection auto-continue** — when a likes/playlist queue ends (repeat
+  off), optionally flow into radio mode seeded from the last track
+  (pref-gated, off by default). All the radio plumbing from M8 reuses;
+  this is a small PlayerProvider change.
+- **Reposter names in the feed** — `/me/feed/tracks` exposes reposters
+  only as bare URNs (`soundcloud:users:N`); showing names would need a
+  cached `/users/{urn}` lookup per reposter. Skipped in M8 as not worth
+  the extra API calls; revisit if the plain "↻ repost" chip feels flat.
 - **Recently played** — views on top of `track_plays`
   (`ORDER BY last_played_at DESC` is already indexed).
 - **Tauri client** — native shell on this same backend.
@@ -60,6 +66,61 @@ OffscreenCanvas worker → WebGL/WebGPU → only then WASM+SIMD. Staying
 plain-web also keeps a future Cast receiver a plain page.
 
 ## Shipped
+
+### Milestone 8 — track radio + feed (2026-07-13)
+
+Discovery arrives, composed from the two endpoints the public API actually
+offers. **Track radio**: an infinite station started from any track (tile
+hover affordance + media bar button). The queue itself is the station's
+memory — `lib/radio.ts` is pure selectors over `QueueState` (low-water
+refill at ≤5 playable remaining, 500-track soft cap bounding the persisted
+payload, seed chain current → history newest-first → original seed).
+`PlayerProvider.refillRadio` shares one in-flight promise between the
+low-water prefetch effect and the end-of-queue fallback in `advance()`;
+related fetches are discovery calls that never touch quota or the
+5-failure streak. The M5 radio CAPS row went live unchanged (skip/seek
+yes, jump/shuffle/repeat no). **Feed**: `/feed` page of uploads + reposts
+from followed users (`useFeed` — paged, never walk-to-completion, no IDB
+cache since a feed's value is nowness; scroll auto-loads 6 pages then an
+explicit "load more"; repost echoes dedupe by track id, first appearance
+wins, "↻ repost" chip). Queue metadata for self-contained sources (radio,
+feed) now persists in `nimbus.queue.v1` (`tracks` snapshot, additive) and
+restores into the metadata cache on reload — driven by a new
+`restoresFromLibrary` capability, so slipstream windows and the queue
+panel stay painted. New provider methods `getRelatedTracks`/`getFeedPage`
+(raw activity-wrapper shapes stay in `lib/soundcloud/`), routes
+`GET /api/tracks/[id]/related` and `GET /api/feed` (withUser + cursor,
+no quota). TrackTile's root became a `role="button"` div so the radio
+affordance can be a real button (buttons can't nest).
+
+Probe findings (recorded for posterity): `/tracks/{id}/related` honors
+`limit` + `linked_partitioning` with offset-based `next_href`, returns
+full bare tracks, is finite per seed (~20–40) — hence seed chaining; many
+items are `access: "preview"` (existing streamable policy applies).
+`/me/feed/tracks` returns activity wrappers `{type: "track" |
+"track:repost", origin: <full track>, reposter?: <bare URN string>,
+created_at}` with cursor-based `next_href`; reposter names are not
+available without per-URN lookups.
+
+Validation:
+
+- 207 unit tests green (26 new: radio engine boundaries/seed
+  ordering/cap truncation, feed dedupe, sources feed kind +
+  `restoresFromLibrary` rows, queue metadata snapshot round-trip +
+  malformed-entry filtering); typecheck + production build clean.
+- Routes (curl, minted session): anonymous → 401 on `/api/feed` and
+  `/api/tracks/{id}/related`; malformed cursor → 400; non-numeric and
+  negative track ids → 400; authed responses carry only normalized
+  provider fields (no raw SC leakage); feed page deduped 29 items with a
+  working cursor; related returned 39 tracks for the probe seed.
+- Live (playwright-cli, minted session, plays kept minimal): feed page
+  renders uploads + reposts with "↻ repost" chips and active sidebar
+  link; tile hover shows play + start-radio affordances; starting radio
+  from a feed tile played the seed immediately and filled "up next ·
+  radio" with related tracks, header "radio · <seed title>"; reload
+  restored the full station with artwork/titles from the persisted
+  snapshot, correctly paused. Deeper refill/skip loops were left to unit
+  coverage to spare play quota.
 
 ### Milestone 7 — ambient art shell (2026-07-13)
 
