@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+@.devcontainer/AGENTS.md
+
 ## Commands
 
 ```
@@ -19,6 +21,29 @@ Secrets live in `.env` (gitignored; see `.env.example`). The dev server must be
 launched with the env sourced: `set -a && . ./.env && set +a && bun run dev`.
 Everything builds and tests without credentials. (The 2020 CRA predecessor was
 removed from the tree; it lives in git history before the M4 cleanup.)
+
+### Visual testing (playwright-cli)
+
+`bunx playwright-cli` drives a headless Chromium against the dev server — use
+it to look at pages you change (the `.claude/skills/playwright-cli` skill has
+the full command reference). Config is `.playwright/cli.config.json`
+(chromium, not branded chrome — that's the only one installed).
+
+```
+bunx playwright-cli open http://localhost:3000
+bunx playwright-cli snapshot                    # a11y tree with element refs
+bunx playwright-cli screenshot --filename <scratchpad>/x.png   # then Read the png
+bunx playwright-cli close
+```
+
+- Screenshots and artifacts go to the scratchpad, never the repo
+  (`.playwright/` and `.playwright-cli/` are gitignored except the config).
+- Authed pages: `set -a && . ./.env && set +a && bun tools/mint-session.ts`
+  prints a session JWT for the owner; set it with
+  `bunx playwright-cli cookie-set nimbus_session <jwt>` after opening the app
+  origin, then reload.
+- Don't loop track playback in automation — play resolution consumes real
+  SoundCloud quota (`consumePlayStart`).
 
 ## Architecture
 

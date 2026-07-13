@@ -14,6 +14,11 @@ build/
 .env.*
 !.env.example
 
+# playwright-cli sessions/artifacts (keep only the config)
+.playwright/*
+!.playwright/cli.config.json
+.playwright-cli/
+
 # misc
 .DS_Store
 *.pem

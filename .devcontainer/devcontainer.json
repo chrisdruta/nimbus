@@ -13,6 +13,9 @@
       "INSTALL_ROKIT": "false"
     }
   },
+  "features": {
+    "./harness/features/playwright-deps": { "version": "1.62.0-alpha-1783623505000" }
+  },
   "appPort": ["127.0.0.1:3000:3000"],
   "forwardPorts": [3000],
   "portsAttributes": {
@@ -28,7 +31,8 @@
   "containerEnv": {
     "CLAUDE_CONFIG_DIR": "/home/vscode/.agents/claude",
     "CODEX_HOME": "/home/vscode/.agents/codex",
-    "DISABLE_AUTOUPDATER": "1"
+    "DISABLE_AUTOUPDATER": "1",
+    "PLAYWRIGHT_BROWSERS_PATH": "/home/vscode/.agents/ms-playwright"
   },
   "remoteEnv": {
     "GH_TOKEN": "${localEnv:GH_TOKEN}"

@@ -1,0 +1,16 @@
+{
+  "statusLine": {
+    "type": "command",
+    "command": "bash \"${CLAUDE_PROJECT_DIR}/.devcontainer/harness/scripts/statusline.sh\""
+  },
+  "subagentStatusLine": {
+    "type": "command",
+    "command": "bash \"${CLAUDE_PROJECT_DIR}/.devcontainer/harness/scripts/subagent-statusline.sh\""
+  },
+  "permissions": {
+    "deny": [
+      "Bash(sudo:*)",
+      "Bash(su:*)"
+    ]
+  }
+}
