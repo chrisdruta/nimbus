@@ -190,18 +190,32 @@ export function SidePanel({
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
-        {feed.length > 0 && <LiveSection rows={feed} you={you} />}
+        {/* Your own row alone just mirrors the media bar — the live section
+            earns its space once someone else is listening. */}
+        {feed.some((r) => r.hostId !== you) && (
+          <LiveSection rows={feed} you={you} />
+        )}
         {current && (
           <>
             <p className="px-2 py-1 text-xs text-muted">now playing</p>
             <Row track={current} highlight />
           </>
         )}
-        <p className="px-2 py-1 pt-3 text-xs text-muted">{upNextLabel}</p>
-        {upNext.length === 0 && (
+        {/* A truly idle queue gets one quiet hint instead of empty
+            "up next / end of queue" scaffolding. */}
+        {!slipstream && !current && upNext.length === 0 ? (
           <p className="px-2 py-2 text-sm text-muted">
-            {slipstream ? `waiting for ${hostName}…` : "end of queue"}
+            nothing queued — play something and it lands here
           </p>
+        ) : (
+          <>
+            <p className="px-2 py-1 pt-3 text-xs text-muted">{upNextLabel}</p>
+            {upNext.length === 0 && (
+              <p className="px-2 py-2 text-sm text-muted">
+                {slipstream ? `waiting for ${hostName}…` : "end of queue"}
+              </p>
+            )}
+          </>
         )}
         {upNext.map((t) => (
           <Row

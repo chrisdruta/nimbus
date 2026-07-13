@@ -17,10 +17,12 @@ export function MediaBar() {
       <NowPlaying />
 
       {/* Cap the seek width so it doesn't stretch edge-to-edge of its
-          column on wide screens; keep the whole block cell-centered. */}
-      <div className="hidden w-full max-w-2xl flex-col items-center gap-2 justify-self-center md:flex">
+          column on wide screens; keep the whole block cell-centered. The
+          seek row only exists once a track is loaded — an idle 0:00–0:00
+          scrubber is just noise. */}
+      <div className="hidden w-full max-w-2xl flex-col items-center gap-2 justify-self-center md:flex xl:max-w-3xl">
         <TransportControls />
-        <SeekBar />
+        {current && <SeekBar />}
       </div>
 
       {/* Centered in its column (not pinned to the edge); volume leads so

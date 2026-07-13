@@ -88,7 +88,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
               : "text-muted hover:text-white"
           }`}
         >
-          Liked Tracks
+          liked tracks
         </Link>
         <Link
           href="/feed"
@@ -99,7 +99,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
               : "text-muted hover:text-white"
           }`}
         >
-          Feed
+          feed
         </Link>
         {me?.isOwner && (
           <Link
@@ -111,7 +111,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                 : "text-muted hover:text-white"
             }`}
           >
-            Admin
+            admin
           </Link>
         )}
       </div>

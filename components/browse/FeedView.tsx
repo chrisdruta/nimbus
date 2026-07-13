@@ -12,7 +12,6 @@ import { TrackTile } from "./TrackTile";
 import { TileSkeleton } from "./TileSkeleton";
 import { EmptyState } from "./EmptyState";
 import { IconPlay, IconShuffle } from "@/components/ui/icons";
-import { artworkSized } from "@/lib/artwork";
 import { currentTrackId } from "@/lib/queue";
 
 /**
@@ -87,18 +86,10 @@ export function FeedView() {
     <div className="pb-8">
       <div className="sticky top-0 z-20 h-0">
         <div
-          className={`glass flex items-center gap-3 border-b border-white/5 py-2 pr-16 pl-6 transition-opacity duration-200 ${
+          className={`glass flex items-center gap-3 border-b border-white/5 py-2 pr-16 pl-6 transition-opacity duration-200 xl:pl-10 ${
             slim ? "opacity-100" : "pointer-events-none opacity-0"
           }`}
         >
-          {tracks[0]?.artworkUrl && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={artworkSized(tracks[0].artworkUrl, "large") ?? undefined}
-              alt=""
-              className="h-9 w-9 rounded object-cover"
-            />
-          )}
           <h2 className="min-w-0 truncate font-semibold">feed</h2>
           <span className="shrink-0 text-xs text-muted">
             {tracks.length} tracks
@@ -130,9 +121,12 @@ export function FeedView() {
         </div>
       </div>
 
+      {/* No band artwork: the feed is a time-series, not a collection with
+          an identity — the first track's art would just repeat the tile
+          right below it. */}
       <HeaderBand
         title="feed"
-        artworkUrl={tracks[0]?.artworkUrl ?? null}
+        artworkUrl={null}
         subtitle={`${tracks.length} tracks · from the people you follow`}
         actions={
           <>
@@ -168,7 +162,7 @@ export function FeedView() {
         </p>
       )}
 
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4 px-6 pt-6">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4 px-6 pt-6 xl:grid-cols-[repeat(auto-fill,minmax(240px,1fr))] xl:gap-6 xl:px-10">
         {items.map(({ track, reposted }) => (
           <TrackTile
             key={track.id}

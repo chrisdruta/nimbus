@@ -76,7 +76,7 @@ export const TrackTile = memo(function TrackTile({
 
       {/* signature stacked chips */}
       <span className="absolute top-2 left-2 flex max-w-[88%] flex-col items-start gap-1">
-        <span className="truncate max-w-full bg-black/75 px-1.5 py-0.5 text-xs font-semibold backdrop-blur-sm">
+        <span className="line-clamp-2 max-w-full bg-black/75 px-1.5 py-0.5 text-xs font-semibold backdrop-blur-sm">
           {track.title}
         </span>
         <span className="truncate max-w-full bg-black/75 px-1.5 py-0.5 text-xs text-muted backdrop-blur-sm">
