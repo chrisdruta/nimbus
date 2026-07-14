@@ -199,6 +199,20 @@ describe("parseQueueOp", () => {
     expect(parseQueueOp({ op: "add", track: bad })).toBeNull();
   });
 
+  test("add: rejects external and spoofed SoundCloud links", () => {
+    for (const permalinkUrl of [
+      "https://attacker.example/track",
+      "https://soundcloud.com@attacker.example/track",
+    ]) {
+      expect(
+        parseQueueOp({
+          op: "add",
+          track: { ...track(5), permalinkUrl },
+        }),
+      ).toBeNull();
+    }
+  });
+
   test("remove: requires a positive safe-integer id", () => {
     expect(parseQueueOp({ op: "remove", trackId: 7 })).toEqual({
       op: "remove",

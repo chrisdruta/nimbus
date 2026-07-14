@@ -281,6 +281,29 @@ describe("parseHeartbeat", () => {
     ).toBeNull();
   });
 
+  test("rejects non-SoundCloud and spoofed attribution links", () => {
+    for (const permalinkUrl of [
+      "https://attacker.example/track",
+      "http://soundcloud.com/artist/track",
+      "https://soundcloud.com@attacker.example/track",
+    ]) {
+      expect(
+        parseHeartbeat({
+          ...valid,
+          window: [{ ...track(10), permalinkUrl }],
+        }),
+      ).toBeNull();
+    }
+    expect(
+      parseHeartbeat({
+        ...valid,
+        window: [
+          { ...track(10), artistUrl: "https://m.soundcloud.com/artist" },
+        ],
+      }),
+    ).not.toBeNull();
+  });
+
   test("rejects a non-CDN artwork host, accepts sndcdn + null", () => {
     expect(
       parseHeartbeat({

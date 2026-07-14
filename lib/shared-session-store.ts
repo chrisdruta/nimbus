@@ -15,6 +15,7 @@ import type { SharedControl, SharedQueueEntry } from "./shared-queue";
 const STALE_SECS = STALE_MS / 1000;
 
 export interface SessionState {
+  sessionId: string;
   revision: number;
   controlSeq: number;
   queue: SharedQueueEntry[];
@@ -26,7 +27,7 @@ export interface SessionState {
 export async function startSession(
   hostId: number,
   entries: SharedQueueEntry[],
-): Promise<{ revision: number; queue: SharedQueueEntry[] }> {
+): Promise<{ sessionId: string; revision: number; queue: SharedQueueEntry[] }> {
   const rows = await sql().query(
     `INSERT INTO slipstream_sessions (host_id, queue)
      VALUES ($1, $2::jsonb)
@@ -36,10 +37,12 @@ export async function startSession(
        control    = NULL,
        started_at = now(),
        updated_at = now()
-     RETURNING revision, queue`,
+     RETURNING extract(epoch FROM started_at)::text AS session_id,
+               revision, queue`,
     [hostId, JSON.stringify(entries)],
   );
   return {
+    sessionId: String(rows[0].session_id),
     revision: Number(rows[0].revision),
     queue: rows[0].queue as SharedQueueEntry[],
   };
@@ -55,7 +58,8 @@ export async function getSession(
   hostId: number,
 ): Promise<SessionState | null> {
   const rows = await sql()`
-    SELECT s.revision, s.control_seq, s.queue
+    SELECT extract(epoch FROM s.started_at)::text AS session_id,
+           s.revision, s.control_seq, s.queue
     FROM slipstream_sessions s
     JOIN slipstreams p ON p.user_id = s.host_id
       AND p.updated_at > now() - make_interval(secs => ${STALE_SECS})
@@ -64,6 +68,7 @@ export async function getSession(
   const row = rows[0];
   if (!row) return null;
   return {
+    sessionId: String(row.session_id),
     revision: Number(row.revision),
     controlSeq: Number(row.control_seq),
     queue: (row.queue as SharedQueueEntry[]) ?? [],
@@ -78,6 +83,7 @@ export async function getSession(
  */
 export async function mutateQueue(
   hostId: number,
+  sessionId: string,
   fn: (queue: SharedQueueEntry[], revision: number) => SharedQueueEntry[] | null,
 ): Promise<{ revision: number; queue: SharedQueueEntry[] }> {
   const client = await getPool().connect();
@@ -89,8 +95,9 @@ export async function mutateQueue(
        FROM slipstream_sessions s
        LEFT JOIN slipstreams p ON p.user_id = s.host_id
        WHERE s.host_id = $1
+         AND extract(epoch FROM s.started_at)::text = $3
        FOR UPDATE OF s`,
-      [hostId, STALE_SECS],
+      [hostId, STALE_SECS, sessionId],
     );
     const row = res.rows[0];
     if (!row || !row.fresh) throw new NotFoundError("no live shared session");
@@ -124,6 +131,7 @@ export async function mutateQueue(
  * strictly increases so the host never re-applies an old intent. */
 export async function writeControl(
   hostId: number,
+  sessionId: string,
   control: SharedControl,
 ): Promise<number> {
   const rows = await sql().query(
@@ -132,9 +140,10 @@ export async function writeControl(
          updated_at = now()
      FROM slipstreams p
      WHERE s.host_id = $1 AND p.user_id = $1
-       AND p.updated_at > now() - make_interval(secs => $3)
+       AND extract(epoch FROM s.started_at)::text = $3
+       AND p.updated_at > now() - make_interval(secs => $4)
      RETURNING s.control_seq`,
-    [hostId, JSON.stringify(control), STALE_SECS],
+    [hostId, JSON.stringify(control), sessionId, STALE_SECS],
   );
   if (!rows[0]) throw new NotFoundError("no live shared session");
   return Number(rows[0].control_seq);

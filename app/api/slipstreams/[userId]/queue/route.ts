@@ -15,13 +15,16 @@ import {
   reorderEntries,
 } from "@/lib/shared-queue";
 import { mutateQueue } from "@/lib/shared-session-store";
+import { verifySharedCapability } from "@/lib/shared-capability";
+import { ForbiddenError } from "@/lib/session";
 
 export const runtime = "nodejs";
 
 /**
  * Mutate a live shared session's queue: add / remove / reorder. Any member
- * may edit (invite-only trust at friends scale) — including the host, who
- * goes through the same row-locked path as everyone else. The response
+ * who joined receives a user/host/session-bound capability and may edit —
+ * including the host, who goes through the same row-locked path as everyone
+ * else. The response
  * carries the new truth so the actor updates immediately; everyone else
  * sees the revision bump on their next poll (≤5s).
  */
@@ -33,6 +36,12 @@ export async function POST(
   return withUser(async (session) => {
     requireSameOrigin(req);
     const hostId = positiveSafeInteger(userId, "user id");
+    const capability = verifySharedCapability(
+      req.headers.get("x-nimbus-shared-capability") ?? "",
+      session.userId,
+      hostId,
+    );
+    if (!capability) throw new ForbiddenError("not joined to this session");
     const op = parseQueueOp(await readJsonBody(req, 32 * 1024));
     if (!op) throw new BadRequestError("malformed queue op");
 
@@ -50,7 +59,7 @@ export async function POST(
       const addedBy = (rows[0]?.sc_username as string | null) ?? null;
       const currentTrackId =
         rows[0]?.track_id != null ? Number(rows[0].track_id) : null;
-      return mutateQueue(hostId, (queue) => {
+      return mutateQueue(hostId, capability.sessionId, (queue) => {
         const res = addEntry(queue, { ...op.track, addedBy }, currentTrackId);
         if ("error" in res) {
           throw new BadRequestError(
@@ -62,7 +71,7 @@ export async function POST(
     }
 
     if (op.op === "remove") {
-      return mutateQueue(hostId, (queue) => {
+      return mutateQueue(hostId, capability.sessionId, (queue) => {
         const res = removeEntry(queue, op.trackId);
         return res.changed ? res.queue : null;
       });
@@ -70,7 +79,7 @@ export async function POST(
 
     // reorder — revision-checked inside the lock so simultaneous reorders
     // can't silently clobber each other; the loser refreshes and retries.
-    return mutateQueue(hostId, (queue, revision) => {
+    return mutateQueue(hostId, capability.sessionId, (queue, revision) => {
       if (revision !== op.expectedRevision) {
         throw new ConflictError("queue changed");
       }

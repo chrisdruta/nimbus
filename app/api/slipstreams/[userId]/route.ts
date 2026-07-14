@@ -6,6 +6,7 @@ import {
   positiveSafeInteger,
 } from "@/lib/route-helpers";
 import { getSlipstream } from "@/lib/slipstream-store";
+import { mintSharedCapability } from "@/lib/shared-capability";
 
 export const runtime = "nodejs";
 
@@ -42,6 +43,11 @@ export async function GET(
         ? {
             revision: shared.revision,
             controlSeq: shared.controlSeq,
+            capability: mintSharedCapability({
+              userId: session.userId,
+              hostId,
+              sessionId: shared.sessionId,
+            }),
             ...(shared.revision !== rev ? { queue: shared.queue } : {}),
           }
         : null,

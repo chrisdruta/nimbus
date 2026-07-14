@@ -180,16 +180,21 @@ export interface Heartbeat {
 
 const MAX_STRING = 500;
 
-/** Link-context fields (rendered as <a href>) must be http(s) — the window
- * is host-supplied and shown in every follower's DOM, so a `javascript:`
- * URL here would be stored XSS. Validate server-side (canonical). */
-function isHttpUrl(v: unknown): v is string {
+/** Link-context fields are rendered as SoundCloud attribution links in every
+ * participant's DOM. Keep them on canonical HTTPS SoundCloud hosts so a
+ * member cannot store a phishing URL under trusted-looking link text. */
+function isSoundCloudUrl(v: unknown): v is string {
   if (typeof v !== "string" || v.length === 0 || v.length > MAX_STRING) {
     return false;
   }
   try {
     const u = new URL(v);
-    return u.protocol === "http:" || u.protocol === "https:";
+    return (
+      u.protocol === "https:" &&
+      u.username === "" &&
+      u.password === "" &&
+      (u.hostname === "soundcloud.com" || u.hostname.endsWith(".soundcloud.com"))
+    );
   } catch {
     return false;
   }
@@ -220,9 +225,9 @@ function isWindowEntry(v: unknown): v is QueueTrack {
     t.title.length <= MAX_STRING &&
     typeof t.artist === "string" &&
     t.artist.length <= MAX_STRING &&
-    isHttpUrl(t.artistUrl) &&
+    isSoundCloudUrl(t.artistUrl) &&
     isArtworkUrl(t.artworkUrl) &&
-    isHttpUrl(t.permalinkUrl) &&
+    isSoundCloudUrl(t.permalinkUrl) &&
     typeof t.durationMs === "number" &&
     Number.isSafeInteger(t.durationMs) &&
     t.durationMs >= 0 &&

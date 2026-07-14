@@ -153,6 +153,7 @@ export interface SlipstreamSnapshotRow {
   /** Shared-session state; null when the host isn't sharing. Followers
    * never see `control` — only the host applies intents. */
   shared: {
+    sessionId: string;
     revision: number;
     controlSeq: number;
     queue: SharedQueueEntry[];
@@ -169,6 +170,7 @@ export async function getSlipstream(
   const rows = await sql()`
     SELECT s.user_id, s.track_id, s.position_ms, s.playing, s.track_window,
            s.updated_at, now() AS server_now, u.sc_username, u.avatar_url,
+           extract(epoch FROM ss.started_at)::text AS shared_session_id,
            ss.revision AS shared_revision, ss.control_seq AS shared_control_seq,
            ss.queue AS shared_queue
     FROM slipstreams s
@@ -192,6 +194,7 @@ export async function getSlipstream(
     shared:
       row.shared_revision !== null
         ? {
+            sessionId: String(row.shared_session_id),
             revision: Number(row.shared_revision),
             controlSeq: Number(row.shared_control_seq),
             queue: (row.shared_queue as SharedQueueEntry[]) ?? [],

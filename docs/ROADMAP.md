@@ -95,7 +95,12 @@ requires fresh presence. Reorder is revision-checked under a
 (`ConflictError`, new) on races; add/remove are id-based and idempotent.
 Host 422s auto-remove the entry from the shared list. Quick host reload
 revives the session (`GET /api/slipstream/session` when a persisted
-`"shared"` queue rehydrates). Pure engine `lib/shared-queue.ts`
+`"shared"` queue rehydrates). Queue/control writes require an HMAC-signed
+capability bound to the authenticated user, host, and concrete session
+generation; joining/revival issues it, and restarting a session invalidates
+old capabilities at the database row. Shared attribution URLs are restricted
+to canonical HTTPS SoundCloud hosts before storage. Pure engine
+`lib/shared-queue.ts`
 (mutations, host reconcile `applySharedOrder`, wire validation reusing
 the window's XSS-safe `parseQueueTracks`, now exported). New caps kinds:
 `shared` (host: no shuffle/repeat — they'd rewrite the agreed order) and
@@ -109,9 +114,10 @@ affordance on tiles/rows.
 
 Validation:
 
-- 298 unit tests green (29 new: shared-queue add/remove/reorder edges,
+- 303 unit tests green (34 new: shared-queue add/remove/reorder edges,
   applySharedOrder replay/prune-race/position/dedupe invariants, control
-  + queue-op wire validation incl. `javascript:` rejection, caps rows,
+  + queue-op wire validation incl. external/spoofed-link rejection,
+  user/host/session-bound capability integrity and restart invalidation, caps rows,
   heartbeat `sharedRev`/`controlSeq` fields); typecheck + production
   build clean; schema applied twice over live data.
 - Routes (curl, minted sessions): 401 anonymous on all new routes;

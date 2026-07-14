@@ -12,6 +12,7 @@ import {
   startSession,
   stopSession,
 } from "@/lib/shared-session-store";
+import { mintSharedCapability } from "@/lib/shared-capability";
 
 export const runtime = "nodejs";
 
@@ -26,7 +27,16 @@ export async function POST(req: NextRequest) {
     const tracks = parseQueueTracks(b.queue ?? [], SHARED_QUEUE_CAP);
     if (!tracks) throw new BadRequestError("malformed seed queue");
     const entries = tracks.map((t) => ({ ...t, addedBy: null }));
-    return startSession(session.userId, entries);
+    const started = await startSession(session.userId, entries);
+    return {
+      revision: started.revision,
+      queue: started.queue,
+      capability: mintSharedCapability({
+        userId: session.userId,
+        hostId: session.userId,
+        sessionId: started.sessionId,
+      }),
+    };
   });
 }
 
@@ -41,7 +51,21 @@ export async function DELETE(req: NextRequest) {
 
 /** The caller's own live session, if any — reload revival. */
 export async function GET() {
-  return withUser(async (session) => ({
-    session: await getSession(session.userId),
-  }));
+  return withUser(async (session) => {
+    const own = await getSession(session.userId);
+    return {
+      session: own
+        ? {
+            revision: own.revision,
+            controlSeq: own.controlSeq,
+            queue: own.queue,
+            capability: mintSharedCapability({
+              userId: session.userId,
+              hostId: session.userId,
+              sessionId: own.sessionId,
+            }),
+          }
+        : null,
+    };
+  });
 }

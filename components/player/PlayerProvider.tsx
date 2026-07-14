@@ -144,6 +144,7 @@ interface FollowSession {
   pollFailures: number;
   /** Shared-session state while the host is sharing; null on plain follow. */
   shared: {
+    capability: string;
     revision: number;
     controlSeq: number;
     entries: SharedQueueEntry[];
@@ -162,6 +163,7 @@ interface SnapshotWire {
   updatedAtMs: number;
   serverNowMs: number;
   shared: {
+    capability: string;
     revision: number;
     controlSeq: number;
     /** Embedded only when our `?rev=` was behind. */
@@ -348,6 +350,7 @@ export function PlayerProvider({
   /** Hosting state: server queue revision, last applied control seq, and
    * the entries as last confirmed by the server. */
   const hostSessionRef = useRef<{
+    capability: string;
     revision: number;
     controlSeq: number;
     entries: SharedQueueEntry[];
@@ -417,6 +420,7 @@ export function PlayerProvider({
           if (!res?.ok) return;
           const { session } = (await res.json()) as {
             session: {
+              capability: string;
               revision: number;
               controlSeq: number;
               queue: SharedQueueEntry[];
@@ -424,6 +428,7 @@ export function PlayerProvider({
           };
           if (!session || followRef.current) return;
           hostSessionRef.current = {
+            capability: session.capability,
             revision: session.revision,
             controlSeq: session.controlSeq,
             entries: session.queue,
@@ -1074,6 +1079,7 @@ export function PlayerProvider({
       if (wire.shared) {
         const entries = wire.shared.queue ?? now.shared?.entries ?? [];
         now.shared = {
+          capability: wire.shared.capability,
           revision: wire.shared.revision,
           controlSeq: wire.shared.controlSeq,
           entries,
@@ -1160,6 +1166,7 @@ export function PlayerProvider({
         pollFailures: 0,
         shared: wire.shared
           ? {
+              capability: wire.shared.capability,
               revision: wire.shared.revision,
               controlSeq: wire.shared.controlSeq,
               entries: wire.shared.queue ?? [],
@@ -1312,9 +1319,16 @@ export function PlayerProvider({
         | { op: "remove"; trackId: number }
         | { op: "reorder"; order: number[]; expectedRevision: number },
     ) => {
+      const capability =
+        followRef.current?.shared?.capability ??
+        hostSessionRef.current?.capability;
+      if (!capability) return false;
       const res = await fetch(`/api/slipstreams/${hostId}/queue`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Nimbus-Shared-Capability": capability,
+        },
         body: JSON.stringify(op),
       }).catch(() => null);
       if (res?.ok) {
@@ -1350,9 +1364,14 @@ export function PlayerProvider({
   /** Guest transport intent; the host applies it within a beat (≤5s). */
   const postControl = useCallback(
     async (hostId: number, control: SharedControl) => {
+      const capability = followRef.current?.shared?.capability;
+      if (!capability) return;
       const res = await fetch(`/api/slipstreams/${hostId}/control`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Nimbus-Shared-Capability": capability,
+        },
         body: JSON.stringify(control),
       }).catch(() => null);
       if (!res?.ok) toast("couldn't reach the session", "error");
@@ -1377,11 +1396,17 @@ export function PlayerProvider({
       toast("couldn't start the shared session", "error");
       return;
     }
-    const { revision, queue: entries } = (await res.json()) as {
+    const { capability, revision, queue: entries } = (await res.json()) as {
+      capability: string;
       revision: number;
       queue: SharedQueueEntry[];
     };
-    hostSessionRef.current = { revision, controlSeq: 0, entries };
+    hostSessionRef.current = {
+      capability,
+      revision,
+      controlSeq: 0,
+      entries,
+    };
     // A deliberate new playback context (like playFrom): the previous
     // queue is replaced, not parked. Audio is untouched.
     const order = [cur, ...entries.map((e) => e.id)];

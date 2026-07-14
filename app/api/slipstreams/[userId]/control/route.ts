@@ -8,6 +8,8 @@ import {
 } from "@/lib/route-helpers";
 import { parseControl } from "@/lib/shared-queue";
 import { writeControl } from "@/lib/shared-session-store";
+import { verifySharedCapability } from "@/lib/shared-capability";
+import { ForbiddenError } from "@/lib/session";
 
 export const runtime = "nodejs";
 
@@ -29,8 +31,16 @@ export async function POST(
       // The host mutates its own queue locally, never via intents.
       throw new BadRequestError("that's your own session");
     }
+    const capability = verifySharedCapability(
+      req.headers.get("x-nimbus-shared-capability") ?? "",
+      session.userId,
+      hostId,
+    );
+    if (!capability) throw new ForbiddenError("not joined to this session");
     const control = parseControl(await readJsonBody(req, 4 * 1024));
     if (!control) throw new BadRequestError("malformed control");
-    return { controlSeq: await writeControl(hostId, control) };
+    return {
+      controlSeq: await writeControl(hostId, capability.sessionId, control),
+    };
   });
 }
