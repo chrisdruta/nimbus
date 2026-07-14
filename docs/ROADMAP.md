@@ -39,6 +39,15 @@ project 30 days) trends toward its cap in the dashboard.
   the extra API calls; revisit if the plain "↻ repost" chip feels flat.
 - **Recently played** — views on top of `track_plays`
   (`ORDER BY last_played_at DESC` is already indexed).
+- **Search + artist pages** — `GET /search/tracks` (also
+  `/search/users`, `/search/playlists`) with `linked_partitioning`
+  paging behind a `MusicProvider.search()` seam method plus a debounced
+  search view; artist pages are `GET /users/{urn}` +
+  `/users/{urn}/tracks` behind `getUser()`/`getUserTracks()` and an
+  `/artists/[id]` route, with every artist name in the UI linking there.
+  Search results and artist tracks feed the existing queue/play path, so
+  quota and token-broker constraints hold unchanged. Verify endpoint
+  shapes against the OpenAPI explorer when building.
 - **Tauri client** — native shell on this same backend.
 - **Cast to TV (Google Cast)** — play the stage + viz on a television.
   Shape: a Custom Web Receiver (a small self-hosted page — can be a route

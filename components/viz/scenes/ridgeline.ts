@@ -102,7 +102,11 @@ export function createRidgelineScene(): Scene {
         const eased = 1 - Math.pow(1 - depth, 1.6); // compress at the back
         const y = frontY - (frontY - backY) * eased;
         const fade = 1 - depth * 0.82;
-        g.fillStyle = "rgba(6, 6, 8, 0.94)";
+        // Depth-graded fill: nearly clear just behind the live line,
+        // fully opaque past mid-depth, so the stack fades in instead of
+        // snapping from open line to solid silhouette.
+        const fillAlpha = 0.94 * Math.min(1, depth * 1.7);
+        g.fillStyle = `rgba(6, 6, 8, ${fillAlpha.toFixed(3)})`;
         g.strokeStyle = `rgba(${Math.round(200 + (r - 200) * 0.25)}, ${Math.round(
           200 + (gr - 200) * 0.25,
         )}, ${Math.round(200 + (b - 200) * 0.25)}, ${0.55 * fade})`;
