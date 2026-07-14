@@ -7,7 +7,7 @@ import { MediaBar } from "@/components/player/MediaBar";
 import { SidePanel } from "@/components/player/SidePanel";
 import { useSlipstreamFeed } from "@/components/slipstream/useSlipstreamFeed";
 import { StageView } from "@/components/viz/StageView";
-import { usePlayerState } from "@/components/player/PlayerProvider";
+import { usePlayerActions, usePlayerState } from "@/components/player/PlayerProvider";
 import { IconMenu } from "@/components/ui/icons";
 import { readPref, writePref } from "@/lib/prefs";
 
@@ -19,8 +19,19 @@ export function AppShell({ children }: { children: ReactNode }) {
   // the server and first client render agree (no hydration mismatch).
   const [panelOpen, setPanelOpen] = useState(true);
   const { stageOpen } = usePlayerState();
+  const actions = usePlayerActions();
   const { rows: feed, you } = useSlipstreamFeed();
   const anyoneLive = feed.some((r) => r.hostId !== you);
+
+  // Sidebar navigation must always reveal the page it loads. Route
+  // changes close the stage (StageView watches the pathname), but a
+  // link to the page you're already on doesn't change the route — so
+  // any link click in the nav closes it too.
+  const closeStageOnNav = (e: React.MouseEvent) => {
+    if (stageOpen && (e.target as HTMLElement).closest("a")) {
+      actions.closeStage();
+    }
+  };
 
   useEffect(() => {
     const saved = readPref("queuePanel", isBool);
@@ -46,12 +57,18 @@ export function AppShell({ children }: { children: ReactNode }) {
           <IconMenu size={18} />
         </button>
         {/* Sidebar: static ≥md, drawer below */}
-        <aside className="glass hidden w-60 shrink-0 md:block xl:w-72">
+        <aside
+          className="glass hidden w-60 shrink-0 md:block xl:w-72"
+          onClickCapture={closeStageOnNav}
+        >
           <Sidebar />
         </aside>
         {drawerOpen && (
           <div className="fixed inset-0 z-40 flex md:hidden">
-            <aside className="w-60 bg-side shadow-2xl">
+            <aside
+              className="w-60 bg-side shadow-2xl"
+              onClickCapture={closeStageOnNav}
+            >
               <Sidebar onNavigate={() => setDrawerOpen(false)} />
             </aside>
             <button
