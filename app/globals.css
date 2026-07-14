@@ -52,6 +52,25 @@
   }
 }
 
+/* Scene-name flash on stage mode switch: appear, linger, drift away. */
+@keyframes stage-flash {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  12% {
+    opacity: 0.95;
+    transform: translateY(0);
+  }
+  60% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
 body {
   background: var(--color-main);
   color: #ffffff;

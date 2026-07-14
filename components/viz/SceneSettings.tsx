@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import type { SceneId } from "@/lib/viz/scene";
+import { STAGE_META, type StageMode } from "@/lib/stage";
 import {
   PRESETS,
   SETTINGS_FIELDS,
@@ -11,24 +10,28 @@ import {
   withReset,
   type SceneSettingsPayload,
 } from "@/lib/viz/settings";
+import { IconX } from "@/components/ui/icons";
 
 /**
- * Per-scene tuning panel: preset pills plus an "advanced" disclosure of
- * raw knobs. Opens above the scene picker; every change applies live and
- * persists via the parent's onChange.
+ * Per-scene tuning popover: a compact box anchored just above the "tune"
+ * button in the stage's bottom-right corner, so the controls appear
+ * where the cursor already is — every change applies live and persists
+ * via the parent's onChange. Stays mounted for the reveal transition;
+ * `open` drives it.
  */
 export function SceneSettings({
   scene,
+  open,
   payload,
   onChange,
   onClose,
 }: {
-  scene: SceneId;
+  scene: StageMode;
+  open: boolean;
   payload: SceneSettingsPayload | null;
   onChange: (next: SceneSettingsPayload) => void;
   onClose: () => void;
 }) {
-  const [advanced, setAdvanced] = useState(false);
   const resolved = resolveSceneSettings(scene, payload) as unknown as Record<
     string,
     number | boolean
@@ -36,13 +39,30 @@ export function SceneSettings({
   const activePreset = payload?.scenes[scene]?.preset ?? PRESETS[scene][0].id;
   const hasOverrides =
     Object.keys(payload?.scenes[scene]?.overrides ?? {}).length > 0;
+  const label = STAGE_META.find((s) => s.id === scene)?.label ?? scene;
 
   return (
     <div
-      className="w-72 rounded-xl border border-white/10 bg-black/70 p-4 backdrop-blur-md"
+      aria-hidden={!open}
       onClick={(e) => e.stopPropagation()}
+      className={`absolute right-6 bottom-14 z-10 flex max-h-[72%] w-72 flex-col overflow-y-auto rounded-xl border border-white/10 bg-black/70 p-4 backdrop-blur-md transition-[opacity,transform] duration-200 ease-out ${
+        open
+          ? "translate-y-0 opacity-100"
+          : "pointer-events-none translate-y-2 opacity-0"
+      }`}
     >
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm text-white">{label}</h2>
+        <button
+          aria-label="close tuning"
+          onClick={onClose}
+          className="cursor-pointer rounded-full p-1.5 text-muted transition hover:bg-white/10 hover:text-white"
+        >
+          <IconX size={14} />
+        </button>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-1.5">
         {PRESETS[scene].map((p) => (
           <button
             key={p.id}
@@ -58,115 +78,99 @@ export function SceneSettings({
         ))}
       </div>
 
-      <div className="mt-3 flex items-center justify-between text-xs">
-        <button
-          onClick={() => setAdvanced((v) => !v)}
-          className="cursor-pointer text-muted transition hover:text-white"
-        >
-          {advanced ? "advanced −" : "advanced +"}
-        </button>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => onChange(withReset(payload, scene))}
-            className="cursor-pointer text-muted transition hover:text-white"
-          >
-            reset
-          </button>
-          <button
-            onClick={onClose}
-            className="cursor-pointer text-muted transition hover:text-white"
-          >
-            close
-          </button>
-        </div>
-      </div>
-
-      {advanced && (
-        <div className="mt-3 flex flex-col gap-2.5">
-          {SETTINGS_FIELDS[scene].map((field) => {
-            if (field.kind === "toggle") {
-              const on = resolved[field.key] === true;
-              return (
-                <label
-                  key={field.key}
-                  className="flex cursor-pointer items-center justify-between text-xs text-muted"
-                >
-                  {field.label}
-                  <button
-                    onClick={() =>
-                      onChange(withOverride(payload, scene, field.key, !on))
-                    }
-                    className={`cursor-pointer rounded-full px-2.5 py-0.5 transition ${
-                      on
-                        ? "bg-accent/80 text-white"
-                        : "bg-white/10 hover:bg-white/20"
-                    }`}
-                  >
-                    {on ? "on" : "off"}
-                  </button>
-                </label>
-              );
-            }
-            const value = Number(resolved[field.key]);
-            if (field.kind === "choice") {
-              return (
-                <div
-                  key={field.key}
-                  className="flex items-center justify-between text-xs text-muted"
-                >
-                  {field.label}
-                  <div className="flex gap-1">
-                    {field.options.map((opt) => (
-                      <button
-                        key={opt}
-                        onClick={() =>
-                          onChange(withOverride(payload, scene, field.key, opt))
-                        }
-                        className={`cursor-pointer rounded px-1.5 py-0.5 transition ${
-                          opt === value
-                            ? "bg-accent/80 text-white"
-                            : "bg-white/10 hover:bg-white/20"
-                        }`}
-                      >
-                        {opt}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              );
-            }
+      <div className="mt-4 flex flex-col gap-2.5 border-t border-white/5 pt-4">
+        {SETTINGS_FIELDS[scene].map((field) => {
+          if (field.kind === "toggle") {
+            const on = resolved[field.key] === true;
             return (
               <label
                 key={field.key}
-                className="flex items-center gap-2 text-xs text-muted"
+                className="flex cursor-pointer items-center justify-between text-xs text-muted"
               >
-                <span className="w-16 shrink-0">{field.label}</span>
-                <input
-                  type="range"
-                  min={field.min}
-                  max={field.max}
-                  step={field.step}
-                  value={value}
-                  onChange={(e) =>
-                    onChange(
-                      withOverride(
-                        payload,
-                        scene,
-                        field.key,
-                        Number(e.target.value),
-                      ),
-                    )
+                {field.label}
+                <button
+                  onClick={() =>
+                    onChange(withOverride(payload, scene, field.key, !on))
                   }
-                  className="h-1 w-full cursor-pointer accent-accent"
-                />
-                <span className="w-10 shrink-0 text-right tabular-nums">
-                  {value}
-                </span>
+                  className={`cursor-pointer rounded-full px-2.5 py-0.5 transition ${
+                    on
+                      ? "bg-accent/80 text-white"
+                      : "bg-white/10 hover:bg-white/20"
+                  }`}
+                >
+                  {on ? "on" : "off"}
+                </button>
               </label>
             );
-          })}
-        </div>
-      )}
+          }
+          const value = Number(resolved[field.key]);
+          if (field.kind === "choice") {
+            return (
+              <div
+                key={field.key}
+                className="flex items-center justify-between text-xs text-muted"
+              >
+                {field.label}
+                <div className="flex gap-1">
+                  {field.options.map((opt) => (
+                    <button
+                      key={opt}
+                      onClick={() =>
+                        onChange(withOverride(payload, scene, field.key, opt))
+                      }
+                      className={`cursor-pointer rounded px-1.5 py-0.5 transition ${
+                        opt === value
+                          ? "bg-accent/80 text-white"
+                          : "bg-white/10 hover:bg-white/20"
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          }
+          return (
+            <label
+              key={field.key}
+              className="flex items-center gap-2 text-xs text-muted"
+            >
+              <span className="w-16 shrink-0">{field.label}</span>
+              <input
+                type="range"
+                min={field.min}
+                max={field.max}
+                step={field.step}
+                value={value}
+                onChange={(e) =>
+                  onChange(
+                    withOverride(
+                      payload,
+                      scene,
+                      field.key,
+                      Number(e.target.value),
+                    ),
+                  )
+                }
+                className="h-1 w-full cursor-pointer accent-accent"
+              />
+              <span className="w-10 shrink-0 text-right tabular-nums">
+                {value}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+
+      <div className="mt-4 border-t border-white/5 pt-3">
+        <button
+          onClick={() => onChange(withReset(payload, scene))}
+          className="cursor-pointer text-xs text-muted transition hover:text-white"
+        >
+          reset to defaults
+        </button>
+      </div>
     </div>
   );
 }

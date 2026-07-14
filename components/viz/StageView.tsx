@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { SceneHost } from "./SceneHost";
 import { ScenePicker } from "./ScenePicker";
 import { createScene } from "./scenes";
@@ -15,6 +16,7 @@ import {
   isSceneSettingsPayload,
   resolveDsp,
   resolveSceneSettings,
+  type ArtSettings,
   type SceneSettingsPayload,
 } from "@/lib/viz/settings";
 import type { TrackShape } from "@/lib/viz/trackshape";
@@ -56,7 +58,19 @@ export function StageView() {
     [mode],
   );
 
+  // Scene-name flash on mode change: big lowercase label, fades on its
+  // own via the stage-flash animation (keyed by nonce to restart).
+  const [flash, setFlash] = useState<{ label: string; n: number } | null>(
+    null,
+  );
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
+
   const selectMode = useCallback((id: StageMode) => {
+    if (id !== modeRef.current) {
+      const label = STAGE_META.find((s) => s.id === id)?.label ?? id;
+      setFlash((f) => ({ label, n: (f?.n ?? 0) + 1 }));
+    }
     setMode(id);
     writePref("stageMode", id);
   }, []);
@@ -78,10 +92,26 @@ export function StageView() {
     [mode, settings],
   );
   const visual = useMemo(
-    () => (mode === "art" ? undefined : resolveSceneSettings(mode, settings)),
+    () => resolveSceneSettings(mode, settings),
     [mode, settings],
   );
-  useEffect(() => setTuneOpen(false), [mode, stageOpen]);
+  // The popover follows the active mode across switches; it only closes
+  // when the stage itself does.
+  useEffect(() => {
+    if (!stageOpen) setTuneOpen(false);
+  }, [stageOpen]);
+
+  // Navigation happens under the overlay (sidebar links stay clickable),
+  // so a route change closes the stage — otherwise the page you asked
+  // for loads invisibly behind it.
+  const pathname = usePathname();
+  const prevPathname = useRef(pathname);
+  useEffect(() => {
+    if (pathname !== prevPathname.current) {
+      prevPathname.current = pathname;
+      actions.closeStage();
+    }
+  }, [pathname, actions]);
 
   // True browser fullscreen on the stage element itself — the shell
   // (sidebar, queue, media bar) stays behind, so this is the only way to
@@ -164,8 +194,13 @@ export function StageView() {
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        // In fullscreen, esc belongs to the browser (exits fullscreen);
-        // the stage itself stays open — a second esc closes it.
+        // Esc peels layers: tuning drawer, then browser fullscreen
+        // (which owns the key), then the stage itself.
+        if (tuneOpenRef.current) {
+          setTuneOpen(false);
+          pokeChrome();
+          return;
+        }
         if (document.fullscreenElement) return;
         actions.closeStage();
         return;
@@ -176,7 +211,7 @@ export function StageView() {
       } else if (e.key === "ArrowLeft") {
         selectMode(cycleStageMode(mode, -1));
         pokeChrome();
-      } else if (/^[1-6]$/.test(e.key)) {
+      } else if (/^[1-5]$/.test(e.key)) {
         const meta = STAGE_META[Number(e.key) - 1];
         if (meta) {
           selectMode(meta.id);
@@ -193,8 +228,17 @@ export function StageView() {
 
   if (!stageOpen) return null;
 
-  const chrome = `transition-opacity duration-500 ${
-    chromeVisible ? "opacity-100" : "pointer-events-none opacity-0"
+  // Chrome shows fast and breathes away slowly; the bottom clusters get
+  // a slight downward drift on top of the fade.
+  const chrome = `transition-opacity ${
+    chromeVisible
+      ? "opacity-100 duration-200"
+      : "pointer-events-none opacity-0 duration-1000"
+  }`;
+  const chromeDrift = `transition-[opacity,transform] ${
+    chromeVisible
+      ? "translate-y-0 opacity-100 duration-200"
+      : "pointer-events-none motion-safe:translate-y-1 opacity-0 duration-1000"
   }`;
 
   return (
@@ -219,7 +263,13 @@ export function StageView() {
 
       {mode === "art" ? (
         <div className="absolute inset-0 flex items-center justify-center">
-          <div className="relative aspect-square h-[min(70vmin,72%)] overflow-hidden rounded-xl shadow-2xl motion-safe:animate-[stage-breathe_14s_ease-in-out_infinite_alternate]">
+          <div
+            className={`relative aspect-square h-[min(70vmin,72%)] overflow-hidden rounded-xl shadow-2xl ${
+              (visual as ArtSettings).breathe
+                ? "motion-safe:animate-[stage-breathe_14s_ease-in-out_infinite_alternate]"
+                : ""
+            }`}
+          >
             {current?.artworkUrl ? (
               <CrossfadeArt
                 url={current.artworkUrl}
@@ -261,14 +311,25 @@ export function StageView() {
         )
       )}
 
-      <button
-        aria-label="close stage"
-        title="close stage"
-        onClick={() => actions.closeStage()}
-        className={`absolute top-6 right-6 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-black/25 text-muted backdrop-blur-sm transition hover:bg-black/50 hover:text-white ${chrome}`}
-      >
-        <IconX size={16} />
-      </button>
+      {/* window controls, paired top-right */}
+      <div className={`absolute top-6 right-6 flex items-center gap-2 ${chrome}`}>
+        <button
+          aria-label={isFullscreen ? "exit full screen" : "full screen"}
+          title={isFullscreen ? "exit full screen" : "full screen"}
+          onClick={toggleFullscreen}
+          className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-black/25 text-muted backdrop-blur-sm transition hover:bg-black/50 hover:text-white"
+        >
+          {isFullscreen ? <IconCollapse size={15} /> : <IconExpand size={15} />}
+        </button>
+        <button
+          aria-label="close stage"
+          title="close stage"
+          onClick={() => actions.closeStage()}
+          className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-black/25 text-muted backdrop-blur-sm transition hover:bg-black/50 hover:text-white"
+        >
+          <IconX size={16} />
+        </button>
+      </div>
 
       {/* top-left track meta */}
       {current && (
@@ -315,55 +376,45 @@ export function StageView() {
         </div>
       )}
 
-      <div
-        className={`absolute bottom-8 left-1/2 flex -translate-x-1/2 flex-col items-center gap-3 ${chrome}`}
-      >
-        {tuneOpen && mode !== "art" && (
-          <SceneSettings
-            scene={mode}
-            payload={settings}
-            onChange={changeSettings}
-            onClose={() => {
-              setTuneOpen(false);
-              pokeChrome();
-            }}
-          />
-        )}
-        <div className="flex items-center gap-2">
-          <ScenePicker active={mode} onSelect={selectMode} />
-          <button
-            aria-label={isFullscreen ? "exit full screen" : "full screen"}
-            title={isFullscreen ? "exit full screen" : "full screen"}
-            onClick={toggleFullscreen}
-            className="cursor-pointer rounded-full bg-white/10 p-2 text-muted transition hover:bg-white/20 hover:text-white"
-          >
-            {isFullscreen ? <IconCollapse size={15} /> : <IconExpand size={15} />}
-          </button>
-          {mode !== "art" && (
-            <button
-              onClick={() => {
-                setTuneOpen((v) => !v);
-                pokeChrome();
-              }}
-              className={`cursor-pointer rounded-full px-4 py-1.5 text-sm transition ${
-                tuneOpen
-                  ? "bg-white/20 text-white"
-                  : "bg-white/10 text-muted hover:bg-white/20 hover:text-white"
-              }`}
-            >
-              tune
-            </button>
-          )}
+      {/* scene-name flash on mode switch (skipped under reduced motion) */}
+      {flash && (
+        <div
+          key={flash.n}
+          className="pointer-events-none absolute inset-x-0 bottom-[24%] hidden text-center motion-safe:block"
+        >
+          <span className="inline-block animate-[stage-flash_0.9s_ease-out_forwards] text-4xl font-bold text-white/90 [text-shadow:0_2px_16px_rgba(0,0,0,0.7)]">
+            {flash.label}
+          </span>
         </div>
+      )}
+
+      {/* mode switching lives in the bottom-left corner */}
+      <div className={`absolute bottom-6 left-6 ${chromeDrift}`}>
+        <ScenePicker active={mode} onSelect={selectMode} />
       </div>
 
-      {/* tucked into the corner, below the picker row's baseline, so the
-          centered pill cluster can never collide with it */}
-      <p
-        className={`absolute right-4 bottom-3 hidden text-xs text-muted sm:block ${chrome}`}
+      <button
+        onClick={() => {
+          setTuneOpen((v) => !v);
+          pokeChrome();
+        }}
+        className={`absolute right-6 bottom-6 cursor-pointer text-sm [text-shadow:0_1px_10px_rgba(0,0,0,0.85)] hover:text-white ${
+          tuneOpen ? "text-white" : "text-muted"
+        } ${chromeDrift}`}
       >
-        ←→ modes · esc to close
-      </p>
+        tune
+      </button>
+
+      <SceneSettings
+        scene={mode}
+        open={tuneOpen}
+        payload={settings}
+        onChange={changeSettings}
+        onClose={() => {
+          setTuneOpen(false);
+          pokeChrome();
+        }}
+      />
     </div>
   );
 }
