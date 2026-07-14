@@ -199,9 +199,8 @@ export function StageView() {
   return (
     <div
       ref={rootRef}
-      className="absolute inset-0 z-20 cursor-pointer overflow-hidden"
+      className="absolute inset-0 z-20 overflow-hidden"
       style={{ background: theme.background }}
-      onClick={() => actions.closeStage()}
       onMouseMove={pokeChrome}
       onTouchStart={pokeChrome}
     >
@@ -264,10 +263,7 @@ export function StageView() {
       <button
         aria-label="close stage"
         title="close stage"
-        onClick={(e) => {
-          e.stopPropagation();
-          actions.closeStage();
-        }}
+        onClick={() => actions.closeStage()}
         className={`absolute top-6 right-6 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-black/25 text-muted backdrop-blur-sm transition hover:bg-black/50 hover:text-white ${chrome}`}
       >
         <IconX size={16} />
@@ -275,10 +271,7 @@ export function StageView() {
 
       {/* top-left track meta */}
       {current && (
-        <div
-          className={`absolute top-6 left-6 ${chrome}`}
-          onClick={(e) => e.stopPropagation()}
-        >
+        <div className={`absolute top-6 left-6 ${chrome}`}>
           <a
             href={current.permalinkUrl}
             target="_blank"
@@ -311,7 +304,6 @@ export function StageView() {
 
       <div
         className={`absolute bottom-8 left-1/2 flex -translate-x-1/2 flex-col items-center gap-3 ${chrome}`}
-        onClick={(e) => e.stopPropagation()}
       >
         {tuneOpen && mode !== "art" && (
           <SceneSettings

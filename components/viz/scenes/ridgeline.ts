@@ -8,10 +8,10 @@ const COLS = 48;
 
 /**
  * Stacked scrolling spectrum silhouettes — the Unknown Pleasures look.
- * The live spectrum draws as the front ridge; committed history recedes
- * upward with perspective compression, each ridge a filled silhouette so
- * nearer rows occlude farther ones. Spectrum is mirror-folded (lows in
- * the center) for the classic symmetric shape.
+ * The live spectrum draws as the front ridge (stroke only); committed
+ * history recedes upward with perspective compression, each history ridge
+ * a filled silhouette so nearer rows occlude farther ones. Spectrum is
+ * mirror-folded (lows in the center) for the classic symmetric shape.
  */
 export function createRidgelineScene(): Scene {
   let history: SpectrumHistory | null = null;
@@ -19,7 +19,8 @@ export function createRidgelineScene(): Scene {
   let beatLift = 0;
   let prevPhase: number | null = null;
 
-  // One folded ridge: silhouette fill then stroke. amp is in device px.
+  // One folded ridge: optional silhouette fill, then stroke. amp is in
+  // device px.
   function ridge(
     g: CanvasRenderingContext2D,
     values: Float32Array,
@@ -27,6 +28,7 @@ export function createRidgelineScene(): Scene {
     right: number,
     baseY: number,
     amp: number,
+    fill: boolean,
   ): void {
     const w = right - left;
     const n = COLS * 2; // folded: highs → lows → highs
@@ -48,7 +50,7 @@ export function createRidgelineScene(): Scene {
       prevY = y;
     }
     g.lineTo(right, baseY);
-    g.fill();
+    if (fill) g.fill();
     g.stroke();
   }
 
@@ -105,7 +107,7 @@ export function createRidgelineScene(): Scene {
           200 + (gr - 200) * 0.25,
         )}, ${Math.round(200 + (b - 200) * 0.25)}, ${0.55 * fade})`;
         g.lineWidth = Math.max(0.5, s.lineWeight * 0.78 * dpr * (1 - depth * 0.6));
-        ridge(g, history.row(i), inset, width - inset, y, amp * (1 - depth * 0.35));
+        ridge(g, history.row(i), inset, width - inset, y, amp * (1 - depth * 0.35), true);
       }
 
       // Live front ridge from the current bars — smooth per-frame motion,
@@ -125,7 +127,7 @@ export function createRidgelineScene(): Scene {
       const antic = sc.track
         ? dropAnticipation(sc.track.shape, sc.track.positionSec, sc.track.durationSec)
         : 0;
-      g.fillStyle = "rgba(6, 6, 8, 0.96)";
+      // Stroke only — an unfilled front line over the filled history stack.
       g.strokeStyle = "rgba(235, 235, 238, 0.95)";
       g.lineWidth = s.lineWeight * dpr;
       ridge(
@@ -135,6 +137,7 @@ export function createRidgelineScene(): Scene {
         width - inset,
         frontY,
         amp * (1 + 0.18 * beatLift + 0.12 * antic),
+        false,
       );
     },
     dispose() {},
