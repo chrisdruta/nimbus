@@ -7,8 +7,11 @@ import {
   getPlaylists,
   getPlaylistTracks,
   getRelatedTracks,
+  getTrackSocial,
   getWaveform,
   resolveStream,
+  setArtistFollowed,
+  setTrackLiked,
 } from "./api";
 
 export const soundcloudProvider: MusicProvider = {
@@ -23,4 +26,7 @@ export const soundcloudProvider: MusicProvider = {
   getFeedPage,
   resolveStream,
   getWaveform,
+  getTrackSocial,
+  setTrackLiked,
+  setArtistFollowed,
 };

@@ -8,7 +8,7 @@ import { SidePanel } from "@/components/player/SidePanel";
 import { useSlipstreamFeed } from "@/components/slipstream/useSlipstreamFeed";
 import { StageView } from "@/components/viz/StageView";
 import { usePlayerState } from "@/components/player/PlayerProvider";
-import { IconMenu, IconQueue } from "@/components/ui/icons";
+import { IconMenu } from "@/components/ui/icons";
 import { readPref, writePref } from "@/lib/prefs";
 
 const isBool = (v: unknown): v is boolean => typeof v === "boolean";
@@ -45,19 +45,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         >
           <IconMenu size={18} />
         </button>
-        {!panelOpen && (
-          <button
-            aria-label="open queue"
-            onClick={() => setPanel(true)}
-            className="absolute top-4 right-4 z-30 hidden cursor-pointer rounded-md bg-black/40 p-2 text-muted backdrop-blur-sm transition hover:text-white md:block"
-          >
-            <IconQueue size={18} />
-            {anyoneLive && (
-              <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-accent" />
-            )}
-          </button>
-        )}
-
         {/* Sidebar: static ≥md, drawer below */}
         <aside className="glass hidden w-60 shrink-0 md:block xl:w-72">
           <Sidebar />
@@ -90,7 +77,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         )}
       </div>
 
-      <MediaBar />
+      <MediaBar
+        queueOpen={panelOpen}
+        onToggleQueue={() => setPanel(!panelOpen)}
+        queueLive={anyoneLive}
+      />
     </div>
   );
 }

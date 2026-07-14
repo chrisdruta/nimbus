@@ -67,6 +67,42 @@ plain-web also keeps a future Cast receiver a plain page.
 
 ## Shipped
 
+### Milestone 10 — player bar & loudness (2026-07-14)
+
+**Volume leveling** (`lib/loudness.ts`, pure + tested): gated-RMS loudness
+estimation (blocks below −55 dBFS ignored) toward a −14 dBFS target, gain
+clamped −12…+6 dB, applied through a new GainNode + limiter
+(`source → analyser → gain → limiter → destination` — analyser taps
+pre-gain so viz behavior and measurements stay source-referenced). The
+player samples the analyser every 250 ms while playing, ramps gain as the
+estimate converges, and LRU-caches per-track loudness (500 entries,
+`nimbus:pref:loudness`) so replays seed instantly. Measurements divide out
+`el.volume²` — element volume scales the signal *before* the graph — and
+skip muted blocks. Toggle ("auto-level", default on) lives in the volume
+cluster. **Perceptual volume**: `el.volume = slider²`; state/persistence
+stay in slider domain. **hls.js preferred over native HLS**: Chrome 142+
+ships built-in HLS whose pipeline does not feed MediaElementSourceNode
+(analyser reads silence → viz + leveler dead), so `loadStream` uses hls.js
+wherever MSE exists and falls back to native only on MSE-less browsers
+(iOS Safari). **Media bar redesign**: inline volume slider (hover flyout
+removed), queue toggle moved from the shell's floating top-right into the
+bar (live dot preserved), like + follow-artist buttons replace copy-link,
+mini viz centered between the track-info icons and transport (equal flex
+spacers; toggles the stage, as does the artwork thumb). **Like/follow**:
+provider methods verified against the official OpenAPI spec —
+`POST/DELETE /likes/tracks/{id}`, `PUT/DELETE /me/followings/{id}`, status
+via `GET /tracks/{id}`.`user_favorite` + `GET /me/followings/{id}`
+(200/404); routes `GET /api/tracks/[id]/social`,
+`PUT|DELETE /api/tracks/[id]/like`, `PUT|DELETE /api/artists/[id]/follow`
+(same-origin-gated mutations); optimistic UI with revert toasts.
+**Stage chrome**: top-right close button, real `requestFullscreen` toggle
+on the stage element (esc exits fullscreen first, stage second). **DSP**:
+default spectral tilt 3 → 1.5 dB/oct everywhere (the +3 M9 setting read
+top-heavy); smooth/punchy presets keep their explicit values.
+Validated via playwright against the live API: follow round-trip net-zero,
+loudness estimates reproducible within 0.2 dB across sessions, layouts
+checked at 1300×750 and 1920×1080.
+
 ### Milestone 9 — viz overhaul (2026-07-13)
 
 The stage grows up. **Chrome**: track title/artist moved to the top-left,

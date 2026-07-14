@@ -40,7 +40,10 @@ const DEFAULTS = {
   monstercat: 1.5,
   gravity: 9,
   noiseFloor: 0.04,
-  tiltDbPerOct: 3,
+  // +1.5 counters music's natural low-end energy dominance without going
+  // top-heavy (+3 lifted the top of a 50 Hz–12 kHz band ~+10 dB over the
+  // bottom, which read treble-first at mini-viz size).
+  tiltDbPerOct: 1.5,
   kneeStart: 0.8,
 };
 

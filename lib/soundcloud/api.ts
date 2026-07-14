@@ -9,6 +9,7 @@ import {
   type ProviderStream,
   type ProviderTrack,
   type ProviderUser,
+  type TrackSocial,
 } from "../provider";
 
 const API_URL = "https://api.soundcloud.com";
@@ -127,6 +128,52 @@ async function scFetch(
   );
 }
 
+/**
+ * Non-GET calls (like/follow writes) and existence probes. Same auth and
+ * transient-retry behavior as scFetch, but the caller decides what each
+ * final status means, so a 404 can be an answer instead of an error.
+ */
+async function scSend(
+  path: string,
+  accessToken: string,
+  method: "GET" | "POST" | "PUT" | "DELETE",
+): Promise<number> {
+  const url = apiUrl(path);
+  const accept = { Accept: "application/json; charset=utf-8" };
+  let lastFailure = "";
+
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    let res: Response | null = null;
+    try {
+      res = await fetch(url, {
+        method,
+        headers: { ...accept, Authorization: `OAuth ${accessToken}` },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+      if (res.status === 401) {
+        res = await fetch(url, {
+          method,
+          headers: { ...accept, Authorization: `Bearer ${accessToken}` },
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+        if (res.status === 401) {
+          throw new ProviderAuthError("SoundCloud rejected the access token");
+        }
+      }
+      void res.body?.cancel();
+      if (res.status !== 429 && res.status < 500) return res.status;
+      lastFailure = `status ${res.status}`;
+    } catch (err) {
+      if (err instanceof ProviderAuthError) throw err;
+      lastFailure = `network error: ${err}`;
+    }
+    if (attempt < MAX_ATTEMPTS - 1) await sleep(retryDelay(res, attempt));
+  }
+  throw new Error(
+    `SoundCloud API ${method} ${new URL(url).pathname} failed: ${lastFailure}`,
+  );
+}
+
 function cursorKey(): Buffer {
   const secret = process.env.SESSION_SECRET;
   if (!secret || Buffer.byteLength(secret, "utf8") < 32) {
@@ -223,6 +270,8 @@ interface ScTrack {
   streamable: boolean | null;
   access?: string; // "playable" | "preview" | "blocked" on newer responses
   waveform_url?: string | null; // PNG on wave.sndcdn.com; .json sibling exists
+  // Per the spec, only meaningful on single-track fetches (else false).
+  user_favorite?: boolean;
   user: ScUser;
 }
 
@@ -511,5 +560,66 @@ export async function resolveStream(
   if (res.ok) return { url: pickedUrl.toString(), protocol: picked.protocol };
   throw new TrackUnavailableError(
     `stream redirect resolution failed: ${res.status}`,
+  );
+}
+
+// ------------------------------------------------------------ social
+
+export async function getTrackSocial(
+  accessToken: string,
+  trackId: number,
+): Promise<TrackSocial> {
+  let track: ScTrack;
+  try {
+    track = (await scFetch(`/tracks/${trackId}`, accessToken)) as ScTrack;
+  } catch (err) {
+    if (err instanceof ProviderAuthError) throw err;
+    throw new TrackUnavailableError(`track lookup failed: ${err}`);
+  }
+  const artistId = track.user?.id;
+  if (!artistId) {
+    throw new TrackUnavailableError(`track ${trackId} has no artist`);
+  }
+  // GET /me/followings/{id}: 200 when followed, 404 when not.
+  const status = await scSend(
+    `/me/followings/${artistId}`,
+    accessToken,
+    "GET",
+  );
+  return {
+    liked: track.user_favorite === true,
+    artistId,
+    artistFollowed: status >= 200 && status < 300,
+  };
+}
+
+export async function setTrackLiked(
+  accessToken: string,
+  trackId: number,
+  liked: boolean,
+): Promise<void> {
+  const status = liked
+    ? await scSend(`/likes/tracks/${trackId}`, accessToken, "POST")
+    : await scSend(`/likes/tracks/${trackId}`, accessToken, "DELETE");
+  // Unliking a track that isn't liked 404s — already in the desired state.
+  if (status >= 200 && status < 300) return;
+  if (!liked && status === 404) return;
+  throw new TrackUnavailableError(
+    `${liked ? "like" : "unlike"} failed: status ${status}`,
+  );
+}
+
+export async function setArtistFollowed(
+  accessToken: string,
+  artistId: number,
+  followed: boolean,
+): Promise<void> {
+  const status = followed
+    ? await scSend(`/me/followings/${artistId}`, accessToken, "PUT")
+    : await scSend(`/me/followings/${artistId}`, accessToken, "DELETE");
+  if (status >= 200 && status < 300) return;
+  if (!followed && status === 404) return; // already not following
+  throw new TrackUnavailableError(
+    `${followed ? "follow" : "unfollow"} failed: status ${status}`,
   );
 }

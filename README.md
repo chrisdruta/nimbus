@@ -16,8 +16,10 @@ always credit and link back to their creator and SoundCloud.
 - **Sign in with SoundCloud** (OAuth 2.1 + PKCE). Tokens are versioned
   AES-256-GCM ciphertext bound to the user and token type, with rolling key
   rotation support. The backend brokers JSON only — audio streams **directly
-  from the SoundCloud CDN**, never through the app. AAC HLS uses hls.js where
-  the browser lacks native playback.
+  from the SoundCloud CDN**, never through the app. AAC HLS plays through
+  hls.js wherever MSE exists (native HLS pipelines don't feed Web Audio, which
+  the visualizers and volume leveling depend on); native playback is the
+  fallback for MSE-less browsers.
 - **Your library**: likes and playlists, cursor-paginated with infinite
   scroll, artwork-tinted headers, the signature chip tiles.
 - **A queue you own**: seeded Fisher–Yates shuffle, persisted
@@ -35,14 +37,18 @@ always credit and link back to their creator and SoundCloud.
   join someone's slipstream to hear what they hear, position-synced and
   read-only. Your own queue parks untouched and every listener streams
   through their own account — leave and you're back exactly where you were.
-- **Visualizations**: four fullscreen scenes — _spectrum_, _orbit_,
-  _drift_, _scope_ — switchable with ←/→ or 1–4, tinted from the track
-  artwork, beat-reactive via onset detection. All bars run through a
-  TypeScript port of [cava](https://github.com/karlstav/cava)'s smoothing
-  (MIT, attributed in `lib/viz/dsp.ts`) — buttery motion, not raw FFT
-  jitter. A mini visualizer lives in the media bar.
-- **Full media bar**: transport, scrubbing seek, persisted volume, queue
-  panel, share, Media Session (media keys / lock screen).
+- **The stage**: five fullscreen modes — _art_, _spectrum_, _ridgeline_,
+  _waterfall_, _scope_ — switchable with ←/→ or 1–5, tinted from the track
+  artwork, beat-reactive via onset detection, with per-scene presets and
+  tuning, a true full-screen toggle, and whole-track waveform lookahead.
+  All bars run through a TypeScript port of
+  [cava](https://github.com/karlstav/cava)'s smoothing (MIT, attributed in
+  `lib/viz/dsp.ts`) — buttery motion, not raw FFT jitter. A mini visualizer
+  in the media bar doubles as the stage toggle.
+- **Full media bar**: transport, scrubbing seek, like and follow-artist at
+  a glance, perceptual (squared-taper) volume with optional auto-leveling —
+  per-track loudness normalization measured client-side and cached — queue
+  panel toggle, Media Session (media keys / lock screen).
 - **Invite-only membership**: single-use invite links minted from the
   admin page. Per-user and global daily stream-start quotas keep the app
   inside SoundCloud's API limits; the owner manages users, invites, and

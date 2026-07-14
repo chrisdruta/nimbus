@@ -21,7 +21,12 @@ import type { TrackShape } from "@/lib/viz/trackshape";
 // Track shapes are immutable per track — cache for the page lifetime.
 // null means "fetched, provider has none"; absent means "not fetched yet".
 const shapeCache = new Map<number, TrackShape | null>();
-import { IconCloud } from "@/components/ui/icons";
+import {
+  IconCloud,
+  IconCollapse,
+  IconExpand,
+  IconX,
+} from "@/components/ui/icons";
 import { readPref, writePref } from "@/lib/prefs";
 import { usePlayerActions, usePlayerState } from "@/components/player/PlayerProvider";
 
@@ -76,6 +81,21 @@ export function StageView() {
     [mode, settings],
   );
   useEffect(() => setTuneOpen(false), [mode, stageOpen]);
+
+  // True browser fullscreen on the stage element itself — the shell
+  // (sidebar, queue, media bar) stays behind, so this is the only way to
+  // get the stage edge-to-edge on a monitor.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(document.fullscreenElement !== null);
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+  const toggleFullscreen = useCallback(() => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void rootRef.current?.requestFullscreen().catch(() => {});
+  }, []);
 
   // Chrome (picker, track meta, hints) shows on pointer activity and
   // hides after a quiet spell — unless the tuning panel is open (hiding
@@ -143,6 +163,9 @@ export function StageView() {
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        // In fullscreen, esc belongs to the browser (exits fullscreen);
+        // the stage itself stays open — a second esc closes it.
+        if (document.fullscreenElement) return;
         actions.closeStage();
         return;
       }
@@ -175,6 +198,7 @@ export function StageView() {
 
   return (
     <div
+      ref={rootRef}
       className="absolute inset-0 z-20 cursor-pointer overflow-hidden"
       style={{ background: theme.background }}
       onClick={() => actions.closeStage()}
@@ -237,7 +261,19 @@ export function StageView() {
         )
       )}
 
-      {/* top-left track meta: the shell's open-queue button owns the top-right */}
+      <button
+        aria-label="close stage"
+        title="close stage"
+        onClick={(e) => {
+          e.stopPropagation();
+          actions.closeStage();
+        }}
+        className={`absolute top-6 right-6 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-black/25 text-muted backdrop-blur-sm transition hover:bg-black/50 hover:text-white ${chrome}`}
+      >
+        <IconX size={16} />
+      </button>
+
+      {/* top-left track meta */}
       {current && (
         <div
           className={`absolute top-6 left-6 ${chrome}`}
@@ -290,6 +326,14 @@ export function StageView() {
         )}
         <div className="flex items-center gap-2">
           <ScenePicker active={mode} onSelect={selectMode} />
+          <button
+            aria-label={isFullscreen ? "exit full screen" : "full screen"}
+            title={isFullscreen ? "exit full screen" : "full screen"}
+            onClick={toggleFullscreen}
+            className="cursor-pointer rounded-full bg-white/10 p-2 text-muted transition hover:bg-white/20 hover:text-white"
+          >
+            {isFullscreen ? <IconCollapse size={15} /> : <IconExpand size={15} />}
+          </button>
           {mode !== "art" && (
             <button
               onClick={() => {

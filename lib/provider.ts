@@ -54,6 +54,13 @@ export interface ProviderPage<T> {
   nextCursor: string | null;
 }
 
+/** The viewer's relationship to a track: liked it, follows its artist. */
+export interface TrackSocial {
+  liked: boolean;
+  artistId: number;
+  artistFollowed: boolean;
+}
+
 /** The provider rejected our credentials even after refresh — re-login. */
 export class ProviderAuthError extends Error {}
 
@@ -98,6 +105,19 @@ export interface MusicProvider {
    * field — lists shouldn't carry per-track waveform URLs around.
    */
   getWaveform(accessToken: string, trackId: number): Promise<number[] | null>;
+  getTrackSocial(accessToken: string, trackId: number): Promise<TrackSocial>;
+  /** Both are idempotent: re-liking / un-liking something already in that
+   * state succeeds quietly. */
+  setTrackLiked(
+    accessToken: string,
+    trackId: number,
+    liked: boolean,
+  ): Promise<void>;
+  setArtistFollowed(
+    accessToken: string,
+    artistId: number,
+    followed: boolean,
+  ): Promise<void>;
 }
 
 export function getProvider(): MusicProvider {

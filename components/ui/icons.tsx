@@ -5,11 +5,14 @@
  */
 
 import {
+  AudioWaveform,
   ChevronUp,
   Cloud,
+  Heart,
   ListMusic,
   Maximize2,
   Menu,
+  Minimize2,
   Pause,
   PanelRightClose,
   Play,
@@ -19,6 +22,8 @@ import {
   Shuffle,
   SkipBack,
   SkipForward,
+  UserCheck,
+  UserPlus,
   Volume2,
   VolumeX,
   X,
@@ -61,11 +66,27 @@ export const IconVolume = ({ size = 20, ...p }: IconProps) => (
 export const IconMute = ({ size = 20, ...p }: IconProps) => (
   <VolumeX size={size} {...p} />
 );
+export const IconLevel = ({ size = 20, ...p }: IconProps) => (
+  <AudioWaveform size={size} {...p} />
+);
+/** Pass `fill="currentColor"` for the liked (solid) state. */
+export const IconHeart = ({ size = 20, ...p }: IconProps) => (
+  <Heart size={size} {...p} />
+);
+export const IconFollow = ({ size = 20, ...p }: IconProps) => (
+  <UserPlus size={size} {...p} />
+);
+export const IconFollowing = ({ size = 20, ...p }: IconProps) => (
+  <UserCheck size={size} {...p} />
+);
 export const IconQueue = ({ size = 20, ...p }: IconProps) => (
   <ListMusic size={size} {...p} />
 );
 export const IconExpand = ({ size = 20, ...p }: IconProps) => (
   <Maximize2 size={size} {...p} />
+);
+export const IconCollapse = ({ size = 20, ...p }: IconProps) => (
+  <Minimize2 size={size} {...p} />
 );
 export const IconShare = ({ size = 20, ...p }: IconProps) => (
   <Share size={size} {...p} />

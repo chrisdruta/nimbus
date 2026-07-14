@@ -62,7 +62,7 @@ export const SETTINGS_DEFAULTS: SceneSettingsMap = {
     freqLow: 50,
     freqHigh: 12000,
     noiseFloor: 0.04,
-    tiltDbPerOct: 3,
+    tiltDbPerOct: 1.5, // keep in step with DEFAULTS in dsp.ts
     mirror: true,
     caps: true,
   },
