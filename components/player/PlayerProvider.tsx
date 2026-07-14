@@ -514,11 +514,13 @@ export function PlayerProvider({
     const ctx = new AudioContext();
     const source = ctx.createMediaElementSource(el);
     const analyser = ctx.createAnalyser();
-    // 2048 gives ~21.5 Hz/bin bass resolution and a ~46 ms scope window.
-    // Down-smoothing lives in the cava-style gravity (lib/viz/dsp.ts), so
-    // the analyser's own smoothing stays low to keep onsets sharp.
-    analyser.fftSize = 2048;
-    analyser.smoothingTimeConstant = 0.5;
+    // 8192 gives ~5.4 Hz/bin — enough to separate adjacent semitones down
+    // to ~G2 for the piano scene (the scope only reads the window's first
+    // 1536 samples, so its trace is unaffected). The longer FFT window
+    // smears time, so the analyser's own smoothing drops to compensate;
+    // down-smoothing lives in the cava-style gravity (lib/viz/dsp.ts).
+    analyser.fftSize = 8192;
+    analyser.smoothingTimeConstant = 0.35;
     const gain = ctx.createGain();
     // Brick-wall-ish safety net so boosted quiet tracks can't clip.
     const limiter = ctx.createDynamicsCompressor();

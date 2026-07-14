@@ -176,7 +176,7 @@ export function StageView() {
       } else if (e.key === "ArrowLeft") {
         selectMode(cycleStageMode(mode, -1));
         pokeChrome();
-      } else if (/^[1-5]$/.test(e.key)) {
+      } else if (/^[1-6]$/.test(e.key)) {
         const meta = STAGE_META[Number(e.key) - 1];
         if (meta) {
           selectMode(meta.id);

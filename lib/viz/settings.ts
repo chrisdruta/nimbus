@@ -6,6 +6,7 @@
 
 import type { SceneId } from "./scene";
 import type { SpectrumTuning } from "./dsp";
+import { pianoBand } from "./piano";
 
 export interface SpectrumSettings {
   barCount: number;
@@ -45,11 +46,26 @@ export interface WaterfallSettings {
   hueSpread: number;
 }
 
+export interface PianoSettings {
+  /** Keyboard size in semitones (49/61/72/88, instrument-anchored). */
+  keys: number;
+  /** Key-release fall speed (SpectrumProcessor gravity). */
+  gravity: number;
+  /** Beam strength above the keyboard, 0 disables. */
+  glow: number;
+  noiseFloor: number;
+  /** Spectral tilt — lifts high notes whose fundamentals run quieter. */
+  tiltDbPerOct: number;
+  /** Octave markers on the C keys. */
+  labels: boolean;
+}
+
 export interface SceneSettingsMap {
   bars: SpectrumSettings;
   scope: ScopeSettings;
   ridge: RidgeSettings;
   waterfall: WaterfallSettings;
+  piano: PianoSettings;
 }
 
 export type SceneVisualSettings = SceneSettingsMap[SceneId];
@@ -69,6 +85,14 @@ export const SETTINGS_DEFAULTS: SceneSettingsMap = {
   scope: { glow: 0.6, trail: 0.65, gainTarget: 0.35, lineWeight: 1.75 },
   ridge: { rows: 36, historySec: 3.2, lineWeight: 1.8 },
   waterfall: { scrollSec: 14, intensity: 1, hueSpread: 40 },
+  piano: {
+    keys: 72,
+    gravity: 14,
+    glow: 0.7,
+    noiseFloor: 0.05,
+    tiltDbPerOct: 1.5,
+    labels: true,
+  },
 };
 
 export type FieldDef =
@@ -103,6 +127,14 @@ export const SETTINGS_FIELDS: Record<SceneId, FieldDef[]> = {
     { kind: "range", key: "scrollSec", label: "scroll", min: 6, max: 30, step: 1 },
     { kind: "range", key: "intensity", label: "intensity", min: 0.5, max: 1.5, step: 0.05 },
     { kind: "range", key: "hueSpread", label: "hue drift", min: -120, max: 120, step: 10 },
+  ],
+  piano: [
+    { kind: "choice", key: "keys", label: "keys", options: [49, 61, 72, 88] },
+    { kind: "range", key: "gravity", label: "release", min: 4, max: 28, step: 1 },
+    { kind: "range", key: "glow", label: "glow", min: 0, max: 1, step: 0.05 },
+    { kind: "range", key: "tiltDbPerOct", label: "tilt", min: 0, max: 6, step: 0.5 },
+    { kind: "range", key: "noiseFloor", label: "floor", min: 0, max: 0.15, step: 0.01 },
+    { kind: "toggle", key: "labels", label: "octaves" },
   ],
 };
 
@@ -155,6 +187,16 @@ export const PRESETS: Record<SceneId, Preset[]> = {
     { id: "prism", label: "prism", values: { hueSpread: 110, intensity: 1.15 } },
     { id: "slow", label: "slow", values: { scrollSec: 26 } },
   ],
+  piano: [
+    { id: "grand", label: "grand", values: {} },
+    { id: "crisp", label: "crisp", values: { gravity: 22, glow: 0.35 } },
+    { id: "cascade", label: "cascade", values: { gravity: 8, glow: 1 } },
+    {
+      id: "minimal",
+      label: "minimal",
+      values: { glow: 0.15, labels: false },
+    },
+  ],
 };
 
 /** One scene's persisted choice: a preset id plus advanced deltas. */
@@ -170,7 +212,7 @@ export interface SceneSettingsPayload {
 
 export const EMPTY_SETTINGS: SceneSettingsPayload = { v: 1, scenes: {} };
 
-const SCENE_IDS: SceneId[] = ["bars", "scope", "ridge", "waterfall"];
+const SCENE_IDS: SceneId[] = ["bars", "scope", "ridge", "waterfall", "piano"];
 
 export function isSceneSettingsPayload(
   v: unknown,
@@ -241,14 +283,29 @@ export interface ResolvedDsp {
 }
 
 /**
- * DSP config for the active scene. Only the spectrum scene exposes DSP
- * knobs; every other scene runs the defaults so bars-driven scenes
- * (ridgeline, waterfall) stay on the house-tuned pipeline.
+ * DSP config for the active scene. The spectrum scene exposes its DSP
+ * knobs directly; the piano scene derives a semitone-aligned band (one
+ * bar per key, monstercat off so notes don't bleed into neighbors);
+ * every other scene runs the defaults so bars-driven scenes (ridgeline,
+ * waterfall) stay on the house-tuned pipeline.
  */
 export function resolveDsp(
   scene: SceneId,
   payload: SceneSettingsPayload | null,
 ): ResolvedDsp {
+  if (scene === "piano") {
+    const p = resolveSceneSettings("piano", payload);
+    return {
+      barCount: p.keys,
+      ...pianoBand(p.keys),
+      tuning: {
+        gravity: p.gravity,
+        monstercat: 1,
+        noiseFloor: p.noiseFloor,
+        tiltDbPerOct: p.tiltDbPerOct,
+      },
+    };
+  }
   const d = SETTINGS_DEFAULTS.bars;
   const s = scene === "bars" ? resolveSceneSettings("bars", payload) : d;
   return {

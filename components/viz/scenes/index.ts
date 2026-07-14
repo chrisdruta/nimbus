@@ -3,6 +3,7 @@ import { createSpectrumBarsScene } from "./spectrumBars";
 import { createRidgelineScene } from "./ridgeline";
 import { createWaterfallScene } from "./waterfall";
 import { createOscilloscopeScene } from "./oscilloscope";
+import { createPianoScene } from "./piano";
 
 export function createScene(id: SceneId): Scene {
   switch (id) {
@@ -14,5 +15,7 @@ export function createScene(id: SceneId): Scene {
       return createWaterfallScene();
     case "scope":
       return createOscilloscopeScene();
+    case "piano":
+      return createPianoScene();
   }
 }

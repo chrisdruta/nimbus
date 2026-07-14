@@ -70,6 +70,27 @@ plain-web also keeps a future Cast receiver a plain page.
 
 ## Shipped
 
+### Milestone 14 — piano scene (2026-07-14)
+
+Fifth viz scene: a 49/61/72/88-key keyboard lit from the FFT. The trick
+is in `resolveDsp` — 72 log-spaced bars over a quarter-tone-padded band
+(`pianoBand`, `lib/viz/piano.ts`) makes each cava-pipeline bar exactly
+one semitone, so bars[i] is key i with zero new aggregation code
+(monstercat off so notes don't bleed across keys). `noteContrast`
+(spectral contrast vs the ±4-semitone neighborhood, pure + tested)
+keeps dense mixes from lighting the whole board: peaks pop, the
+broadband bed shimmers faintly. Painting is beams scaled from a
+unit-height gradient (soft tips, no per-frame gradient builds, no
+shadowBlur), accent-lit keys running white-hot, felt strip blooming on
+the tempo grid. Analyser fftSize 2048→8192 (semitone resolution to
+~G2; smoothing 0.5→0.35 to offset the longer window) — config-only
+per the topology rule; bars/ridge/waterfall/scope eyeballed fine after
+the change, scope reads only its first 1536 samples.
+
+Validation: `bun test` (viz-piano.test.ts: band/layout/contrast/
+resolveDsp), typecheck, playwright-cli against live playback on all
+five scenes + tune panel fields.
+
 ### Milestone 13 — search + artist pages (2026-07-14)
 
 Debounced catalog search (tracks + artists tabs) at `/search`, and
