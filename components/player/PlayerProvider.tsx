@@ -53,6 +53,21 @@ import {
   type FollowerLocal,
   type SlipstreamSnapshot,
 } from "@/lib/slipstream";
+import {
+  LEVELER,
+  accumulate,
+  blockMeanSquare,
+  createLevelerState,
+  dbToLinear,
+  gainDbFor,
+  isLoudnessCachePayload,
+  loadLoudnessMap,
+  loudnessDb,
+  rememberLoudness,
+  serializeLoudnessMap,
+  type LevelerState,
+} from "@/lib/loudness";
+import { readPref, writePref } from "@/lib/prefs";
 import { useMediaSession } from "@/lib/hooks/useMediaSession";
 import {
   useSlipstreamPublisher,
@@ -66,6 +81,18 @@ const MAX_CONSECUTIVE_FAILURES = 5;
  * as gone (network blips shouldn't end a follow). */
 const MAX_POLL_FAILURES = 3;
 const VOLUME_KEY = "nimbus:volume";
+
+// ------------------------------------------------------- volume leveling
+/** How often the leveler samples the analyser's time-domain window. */
+const LEVELER_BLOCK_MS = 250;
+/** Persist the estimate every N gated blocks once it's cache-worthy. */
+const LEVELER_SAVE_EVERY = 20;
+/** Limiter safety net for boosted quiet tracks; parked at 0 dB when
+ * leveling is off so the disabled path stays untouched. */
+const LIMITER_THRESHOLD_DB = -1.5;
+/** Gain ramp time constants (s): slow while refining, fast on seeds. */
+const LEVELER_RAMP_S = 0.4;
+const LEVELER_SEED_RAMP_S = 0.05;
 
 export interface SlipstreamHost {
   userId: number;
@@ -118,6 +145,8 @@ export interface PlayerState {
   shuffleMode: ShuffleMode;
   repeat: RepeatMode;
   volume: number;
+  /** Volume leveling (per-track loudness normalization) enabled. */
+  leveling: boolean;
   /** Fullscreen stage (art + viz scenes) visibility. */
   stageOpen: boolean;
   queue: QueueState | null;
@@ -151,6 +180,8 @@ export interface PlayerActions {
   setShuffleMode(mode: ShuffleMode): void;
   cycleRepeat(): void;
   setVolume(v: number): void;
+  /** Toggle volume leveling; off restores the untouched signal path. */
+  setLeveling(on: boolean): void;
   openStage(): void;
   closeStage(): void;
   getMeta(trackId: number): QueueTrack | undefined;
@@ -213,11 +244,21 @@ export function PlayerProvider({
   const [current, setCurrent] = useState<QueueTrack | null>(null);
   const [playing, setPlaying] = useState(false);
   const [volume, setVolumeState] = useState(1);
+  const [leveling, setLevelingState] = useState(true);
   const [stageOpen, setStageOpen] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
+  // ------------------------------------------------------ volume leveling
+  const levelerGainRef = useRef<GainNode | null>(null);
+  const limiterRef = useRef<DynamicsCompressorNode | null>(null);
+  const levelingRef = useRef(true);
+  const levelerRef = useRef<LevelerState>(createLevelerState());
+  /** trackId → measured loudness (dBFS), LRU-persisted across sessions. */
+  const loudnessMapRef = useRef<Map<number, number>>(new Map());
+  /** Track the leveler is currently measuring (mirrors `current`). */
+  const levelerTrackRef = useRef<number | null>(null);
   const hlsRef = useRef<Hls | null>(null);
   const queueRef = useRef<QueueState | null>(null);
   const metaRef = useRef<Map<number, QueueTrack>>(new Map());
@@ -280,6 +321,13 @@ export function PlayerProvider({
     if (storedVolume >= 0 && storedVolume <= 1 && !Number.isNaN(storedVolume)) {
       setVolumeState(storedVolume);
     }
+    const storedLeveling =
+      readPref("leveling", (v): v is boolean => typeof v === "boolean") ?? true;
+    levelingRef.current = storedLeveling;
+    setLevelingState(storedLeveling);
+    loudnessMapRef.current = loadLoudnessMap(
+      readPref("loudness", isLoudnessCachePayload),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -299,10 +347,24 @@ export function PlayerProvider({
 
   useEffect(() => {
     const el = audioRef.current;
-    if (el) el.volume = volume;
+    // Perceptual taper: loudness perception is ~logarithmic, so a linear
+    // slider crams all audible change into its bottom fifth. Squaring the
+    // slider value spreads the useful range across the whole travel
+    // (half-slider ≈ 25% signal ≈ −12 dB). State and persistence stay in
+    // slider domain; only the element sees the curve. The leveler is
+    // unaffected — it reads back `el.volume`, whatever the mapping.
+    if (el) el.volume = volume * volume;
   }, [volume]);
 
   // -------------------------------------------------------- audio graph
+
+  /** Ramp the leveler gain (no-op until the graph exists). */
+  const applyLevelerGain = useCallback((db: number, rampS: number) => {
+    const ctx = ctxRef.current;
+    const gain = levelerGainRef.current;
+    if (!ctx || !gain) return;
+    gain.gain.setTargetAtTime(dbToLinear(db), ctx.currentTime, rampS);
+  }, []);
 
   const ensureGraph = useCallback(() => {
     const el = audioRef.current;
@@ -312,7 +374,10 @@ export function PlayerProvider({
       return;
     }
     // A media element accepts exactly one MediaElementSourceNode, ever —
-    // build the graph once and reuse it for the app's lifetime.
+    // build the graph once and reuse it for the app's lifetime:
+    // source → analyser → leveler gain → limiter → destination. The
+    // analyser taps pre-gain so the viz keeps today's signal and the
+    // leveler's measurements stay source-referenced (cacheable).
     const ctx = new AudioContext();
     const source = ctx.createMediaElementSource(el);
     const analyser = ctx.createAnalyser();
@@ -321,12 +386,89 @@ export function PlayerProvider({
     // the analyser's own smoothing stays low to keep onsets sharp.
     analyser.fftSize = 2048;
     analyser.smoothingTimeConstant = 0.5;
+    const gain = ctx.createGain();
+    // Brick-wall-ish safety net so boosted quiet tracks can't clip.
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.003;
+    limiter.release.value = 0.25;
+    limiter.threshold.value = levelingRef.current ? LIMITER_THRESHOLD_DB : 0;
     source.connect(analyser);
-    analyser.connect(ctx.destination);
+    analyser.connect(gain);
+    gain.connect(limiter);
+    limiter.connect(ctx.destination);
     ctxRef.current = ctx;
     analyserRef.current = analyser;
+    levelerGainRef.current = gain;
+    limiterRef.current = limiter;
+    // The graph may be born mid-track (first user gesture) — seed the gain
+    // for whatever the leveler already knows about the current track.
+    if (levelingRef.current) {
+      const id = levelerTrackRef.current;
+      const known = id !== null ? loudnessMapRef.current.get(id) : undefined;
+      if (known !== undefined) {
+        gain.gain.value = dbToLinear(gainDbFor(known));
+      }
+    }
     void ctx.resume();
   }, []);
+
+  // New track: reset the estimate and seed the gain — from cache when the
+  // track's loudness is already known, else neutral until measured.
+  useEffect(() => {
+    const id = current?.id ?? null;
+    levelerTrackRef.current = id;
+    levelerRef.current = createLevelerState();
+    if (!levelingRef.current) return;
+    const known = id !== null ? loudnessMapRef.current.get(id) : undefined;
+    applyLevelerGain(
+      known !== undefined ? gainDbFor(known) : 0,
+      LEVELER_SEED_RAMP_S,
+    );
+  }, [current?.id, applyLevelerGain]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sample the analyser's time-domain window while playing; each block
+  // refines the integrated estimate and eases the gain toward target.
+  // Estimates that have seen enough signal persist across sessions.
+  useEffect(() => {
+    if (!playing || !leveling) return;
+    let buf: Float32Array<ArrayBuffer> | null = null;
+    const iv = setInterval(() => {
+      const analyser = analyserRef.current;
+      const el = audioRef.current;
+      if (!analyser || !el || el.paused) return;
+      if (!buf || buf.length !== analyser.fftSize) {
+        buf = new Float32Array(analyser.fftSize);
+      }
+      // The element's volume scales the signal *before* the graph, so
+      // divide it back out — estimates must be volume-independent or the
+      // leveler would fight the volume slider and poison the cache.
+      if (el.muted || el.volume === 0) return;
+      analyser.getFloatTimeDomainData(buf);
+      const ms = blockMeanSquare(buf) / (el.volume * el.volume);
+      const next = accumulate(levelerRef.current, ms);
+      if (next === levelerRef.current) return; // gated — silence
+      levelerRef.current = next;
+      const db = loudnessDb(next);
+      if (db === null) return;
+      applyLevelerGain(gainDbFor(db), LEVELER_RAMP_S);
+      const id = levelerTrackRef.current;
+      if (
+        id !== null &&
+        next.blocks >= LEVELER.cacheBlocks &&
+        next.blocks % LEVELER_SAVE_EVERY === 0
+      ) {
+        loudnessMapRef.current = rememberLoudness(
+          loudnessMapRef.current,
+          id,
+          db,
+        );
+        writePref("loudness", serializeLoudnessMap(loudnessMapRef.current));
+      }
+    }, LEVELER_BLOCK_MS);
+    return () => clearInterval(iv);
+  }, [playing, leveling, applyLevelerGain]);
 
   // -------------------------------------------------------- shuffle ctx
 
@@ -441,14 +583,21 @@ export function PlayerProvider({
       hlsRef.current?.destroy();
       hlsRef.current = null;
 
-      if (
-        stream.protocol !== "hls" ||
-        el.canPlayType("application/vnd.apple.mpegurl")
-      ) {
+      if (stream.protocol !== "hls") {
         el.src = stream.url;
         return;
       }
-      if (!Hls.isSupported()) throw new Error("HLS is unsupported");
+      // Prefer hls.js over native HLS wherever MSE exists: the native HLS
+      // pipelines (Chrome 142+, Safari) don't feed MediaElementSourceNode,
+      // which silences the viz and the volume leveler. Native is the
+      // fallback for MSE-less browsers (iOS Safari).
+      if (!Hls.isSupported()) {
+        if (el.canPlayType("application/vnd.apple.mpegurl")) {
+          el.src = stream.url;
+          return;
+        }
+        throw new Error("HLS is unsupported");
+      }
 
       const hls = new Hls({ enableWorker: true });
       hlsRef.current = hls;
@@ -1078,6 +1227,32 @@ export function PlayerProvider({
         }
       },
 
+      setLeveling(on) {
+        levelingRef.current = on;
+        setLevelingState(on);
+        writePref("leveling", on);
+        const limiter = limiterRef.current;
+        const ctx = ctxRef.current;
+        if (limiter && ctx) {
+          limiter.threshold.setTargetAtTime(
+            on ? LIMITER_THRESHOLD_DB : 0,
+            ctx.currentTime,
+            0.1,
+          );
+        }
+        if (!on) {
+          applyLevelerGain(0, LEVELER_RAMP_S);
+          return;
+        }
+        // Re-engage with the freshest knowledge: this session's estimate
+        // if it exists, else the cached loudness.
+        const id = levelerTrackRef.current;
+        const known =
+          loudnessDb(levelerRef.current) ??
+          (id !== null ? loudnessMapRef.current.get(id) : undefined);
+        if (known != null) applyLevelerGain(gainDbFor(known), LEVELER_RAMP_S);
+      },
+
       openStage: () => setStageOpen(true),
       closeStage: () => setStageOpen(false),
 
@@ -1106,6 +1281,7 @@ export function PlayerProvider({
       leaveSlipstream,
     };
   }, [
+    applyLevelerGain,
     buildCtx,
     ensureGraph,
     ensurePlays,
@@ -1185,6 +1361,7 @@ export function PlayerProvider({
       shuffleMode: queue?.shuffleMode ?? "classic",
       repeat: queue?.repeat ?? "off",
       volume,
+      leveling,
       stageOpen,
       queue,
       caps: capsOf(
@@ -1192,7 +1369,7 @@ export function PlayerProvider({
       ),
       slipstream,
     }),
-    [current, playing, queue, slipstream, volume, stageOpen],
+    [current, playing, queue, slipstream, volume, leveling, stageOpen],
   );
 
   const refs = useMemo<PlayerRefs>(() => ({ audioRef, analyserRef }), []);
