@@ -67,6 +67,90 @@ plain-web also keeps a future Cast receiver a plain page.
 
 ## Shipped
 
+### Milestone 12 — shared slipstreams (2026-07-14)
+
+Slipstream grows collaborative control. A host explicitly **shares a
+session** (SidePanel button); joiners get full queue editing — add tracks
+from their own browse views (credited "added by {name}"), remove, reorder
+(hover ✕/↑/↓) — and next/prev/jump. Plain follows stay read-only and
+unchanged.
+
+**Architecture**: server-authoritative shared queue in a new
+`slipstream_sessions` row (one per host; `queue` jsonb of
+`QueueTrack & {addedBy}` capped at 100, seeded with the host's next 25;
+`revision` bumps on every change) + a one-slot LWW transport-control
+intent (`control`/`control_seq`; "play" carries an explicit target so
+concurrent skips coalesce). The host's audio element remains the only
+clock: the host's shared queue is a real local `QueueState`
+(`sourceId: "shared"`), so the publisher, persistence, and the follower
+sync engine (`lib/slipstream.ts` — zero changes) all ride unchanged.
+**No new poll loops**: while sharing, the publisher keepalive drops to 5s
+and the heartbeat POST response doubles as the host's state poll (queue
+embedded only when `sharedRev` is behind; pending control included by
+seq); followers pass `?rev=` on the existing 5s snapshot GET and the
+queue piggybacks only on change. A plain (non-shared) heartbeat deletes
+the sender's session row, so stale sessions self-heal; liveness always
+requires fresh presence. Reorder is revision-checked under a
+`FOR UPDATE` row lock (`lib/shared-session-store.ts`) → 409
+(`ConflictError`, new) on races; add/remove are id-based and idempotent.
+Host 422s auto-remove the entry from the shared list. Quick host reload
+revives the session (`GET /api/slipstream/session` when a persisted
+`"shared"` queue rehydrates). Pure engine `lib/shared-queue.ts`
+(mutations, host reconcile `applySharedOrder`, wire validation reusing
+the window's XSS-safe `parseQueueTracks`, now exported). New caps kinds:
+`shared` (host: no shuffle/repeat — they'd rewrite the agreed order) and
+`slipstream-shared` (guest: skip/jump as intents, no seek). Routes:
+`POST/DELETE/GET /api/slipstream/session`,
+`POST /api/slipstreams/[userId]/queue`,
+`POST /api/slipstreams/[userId]/control`; snapshot/feed/heartbeat
+extended. Guests see a `shared` chip in "listening now", a downgrade
+toast if the host stops sharing, and a "queue for session" hover
+affordance on tiles/rows.
+
+Validation:
+
+- 298 unit tests green (29 new: shared-queue add/remove/reorder edges,
+  applySharedOrder replay/prune-race/position/dedupe invariants, control
+  + queue-op wire validation incl. `javascript:` rejection, caps rows,
+  heartbeat `sharedRev`/`controlSeq` fields); typecheck + production
+  build clean; schema applied twice over live data.
+- Routes (curl, minted sessions): 401 anonymous on all new routes;
+  session restart bumps revision (1→2, never aliases); add duplicate /
+  add current-track / XSS URL / non-permutation → 400; stale-revision
+  reorder → 409; control self-target → 400, dead host → 404; shared
+  heartbeat prunes exactly the played entry and bumps revision once;
+  plain heartbeat deletes a lingering session row; remove is idempotent
+  (no revision bump on no-op).
+- Two-browser (playwright-cli, owner + member sessions): host shares
+  mid-track without audio interruption (queue swaps to 25-entry seed);
+  guest sees the shared chip, joins at the host's playhead, adds a track
+  from their own likes ("added by Dev" on both sides ≤1 beat), removes
+  and reorders with both sides converging ≤5s; guest "next" advanced the
+  host's audio ≤5s and popped exactly one entry; stop-sharing downgraded
+  the guest to read-only follow (toast + disabled transport) while
+  playback continued. Seed policy fix caught live: seeding the full
+  100-entry cap from a big likes queue left no addable slots → seed is
+  now 25.
+
+### Milestone 11 — library view toggles (2026-07-14)
+
+Two persistent display toggles in the likes/playlist browse views, in a
+slim toolbar row between the header and the collection: **grid ⇄ list**
+(new `TrackRow` — 40px artwork, hover play overlay + radio affordance,
+equalizer bars on the current track, duration; same props and
+interaction contract as `TrackTile`) and **hide unplayable** (render-level
+filter with a "showing N of M" cue; header counts, shuffle/play-all, and
+queue behavior untouched — PlayerProvider already filters `streamable`).
+Prefs are global across likes/playlists (`nimbus:pref:browseLayout`,
+`nimbus:pref:hideUnplayable`) via a small `useBrowseDisplayPrefs` hook
+following the AppShell hydration pattern. Feed view deferred.
+
+Validation: typecheck + tests green; playwright pass — list rows
+play/pause/radio correctly, hide toggle shows "showing 599 of 627" with
+header counts unchanged, windowing paginates past 50 with the filter on,
+prefs survive reload and apply on playlist pages, unavailable rows out of
+tab order.
+
 ### Milestone 10 — player bar & loudness (2026-07-14)
 
 **Volume leveling** (`lib/loudness.ts`, pure + tested): gated-RMS loudness

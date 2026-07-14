@@ -170,6 +170,12 @@ export interface Heartbeat {
   playing: boolean;
   /** null = keepalive without a window (server keeps the stored one). */
   window: QueueTrack[] | null;
+  /** Present only while hosting a shared session: the host's last-seen
+   * queue revision. Its absence on any beat deletes the sender's session
+   * row server-side, so stale sessions self-heal. */
+  sharedRev?: number;
+  /** Last control_seq the host has applied (rides with sharedRev). */
+  controlSeq?: number;
 }
 
 const MAX_STRING = 500;
@@ -224,6 +230,32 @@ function isWindowEntry(v: unknown): v is QueueTrack {
   );
 }
 
+/**
+ * Validated, stripped parse of a wire QueueTrack[]; null on any violation.
+ * Canonical validation for member-supplied track metadata that other
+ * members' browsers will render (slipstream windows, shared-session
+ * queues) — nothing beyond the QueueTrack shape survives.
+ */
+export function parseQueueTracks(
+  v: unknown,
+  max: number,
+): QueueTrack[] | null {
+  if (!Array.isArray(v) || v.length > max) return null;
+  if (!v.every(isWindowEntry)) return null;
+  return v.map((t) => ({
+    id: t.id,
+    title: t.title,
+    artist: t.artist,
+    artistUrl: t.artistUrl,
+    artworkUrl: t.artworkUrl,
+    permalinkUrl: t.permalinkUrl,
+    durationMs: t.durationMs,
+  }));
+}
+
+const isCounter = (v: unknown): v is number =>
+  typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
+
 /** Validated parse of a heartbeat body; null on any shape violation. Strips
  * unknown fields so nothing beyond the QueueTrack shape reaches the DB. */
 export function parseHeartbeat(body: unknown): Heartbeat | null {
@@ -243,23 +275,18 @@ export function parseHeartbeat(body: unknown): Heartbeat | null {
   }
   let window: QueueTrack[] | null = null;
   if (b.window !== undefined && b.window !== null) {
-    if (!Array.isArray(b.window) || b.window.length > WINDOW_SIZE) return null;
-    if (!b.window.every(isWindowEntry)) return null;
-    window = b.window.map((t) => ({
-      id: t.id,
-      title: t.title,
-      artist: t.artist,
-      artistUrl: t.artistUrl,
-      artworkUrl: t.artworkUrl,
-      permalinkUrl: t.permalinkUrl,
-      durationMs: t.durationMs,
-    }));
+    window = parseQueueTracks(b.window, WINDOW_SIZE);
+    if (window === null) return null;
     if (window.length > 0 && window[0].id !== b.trackId) return null;
   }
+  if (b.sharedRev !== undefined && !isCounter(b.sharedRev)) return null;
+  if (b.controlSeq !== undefined && !isCounter(b.controlSeq)) return null;
   return {
     trackId: b.trackId,
     positionMs: Math.floor(b.positionMs),
     playing: b.playing,
     window,
+    ...(b.sharedRev !== undefined ? { sharedRev: b.sharedRev } : {}),
+    ...(b.controlSeq !== undefined ? { controlSeq: b.controlSeq } : {}),
   };
 }

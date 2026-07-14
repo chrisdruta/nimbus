@@ -2,28 +2,16 @@
 
 import { memo } from "react";
 import { artworkSized } from "@/lib/artwork";
-import { IconCloud, IconPlay, IconRadio } from "@/components/ui/icons";
+import { IconCloud, IconPlay, IconPlus, IconRadio } from "@/components/ui/icons";
+import { Equalizer } from "./Equalizer";
 import type { ProviderTrack } from "@/lib/provider";
-
-function Equalizer() {
-  return (
-    <span className="absolute right-2 bottom-2 flex h-4 items-end gap-0.5 rounded-sm bg-black/75 p-1">
-      {[0.6, 1, 0.75].map((scale, i) => (
-        <span
-          key={i}
-          className="w-0.5 origin-bottom animate-pulse bg-accent"
-          style={{ height: `${scale * 100}%`, animationDelay: `${i * 150}ms` }}
-        />
-      ))}
-    </span>
-  );
-}
 
 export const TrackTile = memo(function TrackTile({
   track,
   isCurrent,
   onPlay,
   onStartRadio,
+  onAddToSession,
   reposted,
 }: {
   track: ProviderTrack;
@@ -31,6 +19,9 @@ export const TrackTile = memo(function TrackTile({
   onPlay: () => void;
   /** Renders a hover "start radio" affordance when provided. */
   onStartRadio?: () => void;
+  /** Renders a hover "queue for session" affordance when provided
+   * (i.e. while a shared slipstream session is active). */
+  onAddToSession?: () => void;
   /** Feed items: this track reached the feed as a repost. */
   reposted?: boolean;
 }) {
@@ -109,7 +100,24 @@ export const TrackTile = memo(function TrackTile({
           <IconRadio size={14} />
         </button>
       )}
-      {isCurrent && <Equalizer />}
+      {track.streamable && onAddToSession && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onAddToSession();
+          }}
+          aria-label="queue for session"
+          title="queue for session"
+          className="absolute bottom-2 left-10 flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-black/75 text-muted opacity-0 transition group-hover:opacity-100 hover:text-white"
+        >
+          <IconPlus size={14} />
+        </button>
+      )}
+      {isCurrent && (
+        <span className="absolute right-2 bottom-2 rounded-sm bg-black/75 p-1">
+          <Equalizer className="h-2" />
+        </span>
+      )}
     </div>
   );
 });

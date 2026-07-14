@@ -44,6 +44,7 @@ import {
   RADIO_SEED_ATTEMPTS,
 } from "@/lib/radio";
 import {
+  HEARTBEAT_MS,
   POLL_MS,
   WINDOW_SIZE,
   clockOffset,
@@ -53,6 +54,14 @@ import {
   type FollowerLocal,
   type SlipstreamSnapshot,
 } from "@/lib/slipstream";
+import {
+  SHARED_SEED_COUNT,
+  applySharedOrder,
+  seedEntries,
+  type SharedControl,
+  type SharedQueueEntry,
+  type SharedWire,
+} from "@/lib/shared-queue";
 import {
   LEVELER,
   accumulate,
@@ -104,6 +113,18 @@ export interface SlipstreamStatus {
   host: SlipstreamHost;
   /** Follower paused locally (or is quota-blocked); host state won't resume us. */
   userPaused: boolean;
+  /** The host is running a shared session — we have queue-edit and skip
+   * control (routed as intents the host applies). */
+  shared: boolean;
+}
+
+/** The active shared session from this client's perspective — host or
+ * joined guest. `entries` is the agreed upcoming list (server truth,
+ * refreshed by revision on every beat/poll). */
+export interface SharedSessionState {
+  role: "host" | "guest";
+  hostId: number;
+  entries: SharedQueueEntry[];
 }
 
 /** Follower-mode session — lives in a ref; `SlipstreamStatus` mirrors the
@@ -121,6 +142,12 @@ interface FollowSession {
   /** Our copy ended before the host's (30s preview / shorter encode). */
   endedEarlyOn: number | null;
   pollFailures: number;
+  /** Shared-session state while the host is sharing; null on plain follow. */
+  shared: {
+    revision: number;
+    controlSeq: number;
+    entries: SharedQueueEntry[];
+  } | null;
 }
 
 /** Wire shape of GET /api/slipstreams/[userId]. */
@@ -134,6 +161,12 @@ interface SnapshotWire {
   window: QueueTrack[];
   updatedAtMs: number;
   serverNowMs: number;
+  shared: {
+    revision: number;
+    controlSeq: number;
+    /** Embedded only when our `?rev=` was behind. */
+    queue?: SharedQueueEntry[];
+  } | null;
 }
 
 const hostLabel = (h: SlipstreamHost) => h.username ?? "member";
@@ -154,6 +187,8 @@ export interface PlayerState {
   caps: SourceCapabilities;
   /** Set while following someone's slipstream. */
   slipstream: SlipstreamStatus | null;
+  /** Set while in a shared session, hosting or joined. */
+  shared: SharedSessionState | null;
 }
 
 export interface PlayerActions {
@@ -190,6 +225,16 @@ export interface PlayerActions {
   joinSlipstream(hostId: number): Promise<void>;
   /** Back to the parked local queue, exactly as it was left. */
   leaveSlipstream(): void;
+  /** Share the current queue: friends can join, queue tracks, and skip.
+   * Replaces the local queue context (audio keeps playing). */
+  startSharedSession(): void;
+  /** Stop sharing; the queue stays as-is and playback continues. */
+  stopSharedSession(): void;
+  /** Queue a track into the active shared session (host or guest). */
+  addToSharedQueue(track: QueueTrack): void;
+  removeFromSharedQueue(trackId: number): void;
+  /** Swap a shared entry with its neighbor (revision-checked reorder). */
+  moveInSharedQueue(trackId: number, dir: -1 | 1): void;
 }
 
 export interface PlayerRefs {
@@ -228,6 +273,19 @@ function toQueueTrack(t: ProviderTrack): QueueTrack {
     artworkUrl: t.artworkUrl,
     permalinkUrl: t.permalinkUrl,
     durationMs: t.durationMs,
+  };
+}
+
+/** Strip a shared entry to the QueueTrack shape the metadata cache holds. */
+function entryToTrack(e: SharedQueueEntry): QueueTrack {
+  return {
+    id: e.id,
+    title: e.title,
+    artist: e.artist,
+    artistUrl: e.artistUrl,
+    artworkUrl: e.artworkUrl,
+    permalinkUrl: e.permalinkUrl,
+    durationMs: e.durationMs,
   };
 }
 
@@ -285,11 +343,43 @@ export function PlayerProvider({
   const playingRef = useRef(false);
   playingRef.current = playing;
 
+  // ---------------------------------------------------- shared (sessions)
+  const [shared, setShared] = useState<SharedSessionState | null>(null);
+  /** Hosting state: server queue revision, last applied control seq, and
+   * the entries as last confirmed by the server. */
+  const hostSessionRef = useRef<{
+    revision: number;
+    controlSeq: number;
+    entries: SharedQueueEntry[];
+  } | null>(null);
+
+  /** Mirror the active shared session (either role) into React state. */
+  const publishSharedState = useCallback(() => {
+    const f = followRef.current;
+    if (f) {
+      setShared(
+        f.shared
+          ? { role: "guest", hostId: f.host.userId, entries: f.shared.entries }
+          : null,
+      );
+      return;
+    }
+    const hs = hostSessionRef.current;
+    setShared(
+      hs ? { role: "host", hostId: userId, entries: hs.entries } : null,
+    );
+  }, [userId]);
+
   /** Mirror the UI-relevant slice of followRef into React state. */
   const publishFollowState = useCallback(() => {
     const f = followRef.current;
-    setSlipstream(f ? { host: f.host, userPaused: f.userPaused } : null);
-  }, []);
+    setSlipstream(
+      f
+        ? { host: f.host, userPaused: f.userPaused, shared: f.shared !== null }
+        : null,
+    );
+    publishSharedState();
+  }, [publishSharedState]);
 
   // Late-bound so async loops always see the current implementations.
   const followPlayRef = useRef<(trackId: number, atMs: number) => void>(
@@ -297,6 +387,8 @@ export function PlayerProvider({
   );
   const leaveSlipstreamRef = useRef<() => void>(() => {});
   const pollTickRef = useRef<() => void>(() => {});
+  const stopSharedSessionRef = useRef<() => void>(() => {});
+  const sharedRemoveRef = useRef<(trackId: number) => void>(() => {});
 
   const setQueue = useCallback((q: QueueState | null) => {
     queueRef.current = q;
@@ -316,6 +408,38 @@ export function PlayerProvider({
       // Self-contained sources (radio, feed) have no library walk to refill
       // the metadata cache — restore their persisted snapshot.
       for (const t of persisted.tracks ?? []) metaRef.current.set(t.id, t);
+      // A persisted shared-kind queue may belong to a still-live session
+      // (quick reload while hosting) — revive it; otherwise it's just a
+      // plain local queue now.
+      if (persisted.state.sourceId === "shared") {
+        void (async () => {
+          const res = await fetch("/api/slipstream/session").catch(() => null);
+          if (!res?.ok) return;
+          const { session } = (await res.json()) as {
+            session: {
+              revision: number;
+              controlSeq: number;
+              queue: SharedQueueEntry[];
+            } | null;
+          };
+          if (!session || followRef.current) return;
+          hostSessionRef.current = {
+            revision: session.revision,
+            controlSeq: session.controlSeq,
+            entries: session.queue,
+          };
+          for (const t of session.queue) {
+            if (!metaRef.current.has(t.id)) {
+              metaRef.current.set(t.id, entryToTrack(t));
+            }
+          }
+          const q = queueRef.current;
+          if (q && q.sourceId === "shared") {
+            setQueue(applySharedOrder(q, session.queue.map((e) => e.id)));
+          }
+          publishSharedState();
+        })();
+      }
     }
     const storedVolume = Number(localStorage.getItem(VOLUME_KEY));
     if (storedVolume >= 0 && storedVolume <= 1 && !Number.isNaN(storedVolume)) {
@@ -658,6 +782,11 @@ export function PlayerProvider({
         failStreakRef.current += 1;
         const q = queueRef.current;
         if (q) setQueue(markUnplayable(q, trackId));
+        // Hosting a shared session: a track nobody's host can stream must
+        // leave the shared list too, or it lingers for every guest.
+        if (hostSessionRef.current?.entries.some((e) => e.id === trackId)) {
+          sharedRemoveRef.current(trackId);
+        }
         if (failStreakRef.current >= MAX_CONSECUTIVE_FAILURES) {
           toast("too many failures in a row — stopping playback", "error");
           failStreakRef.current = 0;
@@ -835,6 +964,7 @@ export function PlayerProvider({
     if (!f) return;
     followRef.current = null;
     setSlipstream(null);
+    setShared(null);
     const el = audioRef.current;
     if (el) {
       el.pause();
@@ -908,7 +1038,9 @@ export function PlayerProvider({
     const f = followRef.current;
     if (!f) return;
     try {
-      const res = await fetch(`/api/slipstreams/${f.host.userId}`);
+      const res = await fetch(
+        `/api/slipstreams/${f.host.userId}?rev=${f.shared?.revision ?? 0}`,
+      );
       if (res.status === 404) {
         toast(`${hostLabel(f.host)}'s slipstream ended — back to your queue`);
         leaveSlipstreamRef.current();
@@ -936,6 +1068,30 @@ export function PlayerProvider({
       for (const t of wire.window) {
         if (!metaRef.current.has(t.id)) metaRef.current.set(t.id, t);
       }
+      // Shared-session state rides the same poll. The queue is embedded
+      // only when our revision was behind; otherwise keep what we have.
+      const wasShared = now.shared !== null;
+      if (wire.shared) {
+        const entries = wire.shared.queue ?? now.shared?.entries ?? [];
+        now.shared = {
+          revision: wire.shared.revision,
+          controlSeq: wire.shared.controlSeq,
+          entries,
+        };
+        for (const t of entries) {
+          if (!metaRef.current.has(t.id)) {
+            metaRef.current.set(t.id, entryToTrack(t));
+          }
+        }
+      } else {
+        now.shared = null;
+        if (wasShared) {
+          toast("session is no longer shared — following read-only");
+        }
+      }
+      if (wasShared !== (now.shared !== null) || wire.shared?.queue) {
+        publishFollowState();
+      }
       applySync();
     } catch {
       const now = followRef.current;
@@ -949,7 +1105,7 @@ export function PlayerProvider({
         leaveSlipstreamRef.current();
       }
     }
-  }, [applySync, toast]);
+  }, [applySync, publishFollowState, toast]);
   pollTickRef.current = () => void pollTick();
 
   useEffect(() => {
@@ -962,6 +1118,8 @@ export function PlayerProvider({
     async (hostId: number) => {
       const el = audioRef.current;
       if (!el || followRef.current?.host.userId === hostId) return;
+      // Joining someone is an implicit stop of your own shared session.
+      if (hostSessionRef.current) stopSharedSessionRef.current();
       const res = await fetch(`/api/slipstreams/${hostId}`).catch(() => null);
       if (!res?.ok) {
         toast(
@@ -1000,13 +1158,27 @@ export function PlayerProvider({
         unavailable: new Set(),
         endedEarlyOn: null,
         pollFailures: 0,
+        shared: wire.shared
+          ? {
+              revision: wire.shared.revision,
+              controlSeq: wire.shared.controlSeq,
+              entries: wire.shared.queue ?? [],
+            }
+          : null,
       };
       // Fill gaps only — our own cache entries stay authoritative.
       for (const t of wire.window) {
         if (!metaRef.current.has(t.id)) metaRef.current.set(t.id, t);
       }
+      for (const t of wire.shared?.queue ?? []) {
+        if (!metaRef.current.has(t.id)) metaRef.current.set(t.id, entryToTrack(t));
+      }
       publishFollowState();
-      toast(`in ${hostLabel(host)}'s slipstream`);
+      toast(
+        wire.shared
+          ? `in ${hostLabel(host)}'s shared session — queue away`
+          : `in ${hostLabel(host)}'s slipstream`,
+      );
       const atMs = expectedPositionMs(
         followRef.current.snap,
         Date.now() + followRef.current.clockOffsetMs,
@@ -1036,6 +1208,210 @@ export function PlayerProvider({
     else setPlaying(false); // window exhausted — wait for the next poll
   }, []);
 
+  // ------------------------------------------------------ shared sessions
+
+  /** Fill metadata gaps from shared entries — own cache stays authoritative. */
+  const absorbEntries = useCallback((entries: readonly SharedQueueEntry[]) => {
+    for (const e of entries) {
+      if (!metaRef.current.has(e.id)) metaRef.current.set(e.id, entryToTrack(e));
+    }
+  }, []);
+
+  /** Host applies a guest's transport intent to the local queue — the
+   * host's audio element is the session's only clock. */
+  const applySharedControl = useCallback(
+    (control: SharedControl) => {
+      const el = audioRef.current;
+      const q = queueRef.current;
+      if (!q || q.sourceId !== "shared") return;
+      if (control.type === "prev") {
+        // Same convention as local prev: early in a track go back, later
+        // restart it (and coalesced double-prevs restart, harmlessly).
+        if (el && el.currentTime > 3) {
+          el.currentTime = 0;
+          return;
+        }
+        const stepped = prev(q);
+        if (stepped === q) {
+          if (el) el.currentTime = 0;
+          return;
+        }
+        setQueue(stepped);
+        const id = currentTrackId(stepped);
+        if (id !== null) void resolveAndPlay(id);
+        return;
+      }
+      if (
+        control.trackId === currentTrackId(q) ||
+        !q.order.includes(control.trackId) ||
+        q.unplayable.includes(control.trackId)
+      ) {
+        return; // stale/duplicate intent — already there or gone
+      }
+      setQueue(jumpTo(q, control.trackId));
+      void resolveAndPlay(control.trackId);
+    },
+    [resolveAndPlay, setQueue],
+  );
+
+  /** Host-side state channel: shared wire arriving with each beat response. */
+  const applyHostShared = useCallback(
+    (wire: SharedWire) => {
+      const hs = hostSessionRef.current;
+      if (!hs) return;
+      hs.revision = wire.revision;
+      if (wire.queue !== undefined) {
+        hs.entries = wire.queue;
+        absorbEntries(wire.queue);
+        const q = queueRef.current;
+        if (q && q.sourceId === "shared" && !followRef.current) {
+          setQueue(applySharedOrder(q, wire.queue.map((e) => e.id)));
+        }
+        publishSharedState();
+      }
+      if (wire.control && wire.controlSeq > hs.controlSeq) {
+        hs.controlSeq = wire.controlSeq;
+        applySharedControl(wire.control);
+      } else {
+        hs.controlSeq = Math.max(hs.controlSeq, wire.controlSeq);
+      }
+    },
+    [absorbEntries, applySharedControl, publishSharedState, setQueue],
+  );
+
+  /** Apply a queue-mutation response (the new server truth) for our role. */
+  const applySharedTruth = useCallback(
+    (revision: number, entries: SharedQueueEntry[]) => {
+      const f = followRef.current;
+      if (f) {
+        if (!f.shared) return;
+        f.shared = { ...f.shared, revision, entries };
+        absorbEntries(entries);
+        publishSharedState();
+        return;
+      }
+      const hs = hostSessionRef.current;
+      if (!hs) return;
+      hs.revision = revision;
+      hs.entries = entries;
+      absorbEntries(entries);
+      const q = queueRef.current;
+      if (q && q.sourceId === "shared") {
+        setQueue(applySharedOrder(q, entries.map((e) => e.id)));
+      }
+      publishSharedState();
+    },
+    [absorbEntries, publishSharedState, setQueue],
+  );
+
+  const postQueueOp = useCallback(
+    async (
+      hostId: number,
+      op:
+        | { op: "add"; track: QueueTrack }
+        | { op: "remove"; trackId: number }
+        | { op: "reorder"; order: number[]; expectedRevision: number },
+    ) => {
+      const res = await fetch(`/api/slipstreams/${hostId}/queue`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(op),
+      }).catch(() => null);
+      if (res?.ok) {
+        const { revision, queue } = (await res.json()) as {
+          revision: number;
+          queue: SharedQueueEntry[];
+        };
+        applySharedTruth(revision, queue);
+        return true;
+      }
+      if (res?.status === 409) {
+        toast("queue changed under you — try again", "error");
+      } else if (res?.status === 404) {
+        toast("the session is gone", "error");
+      } else {
+        const err = (await res?.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        toast(
+          err?.error === "already queued"
+            ? "already in the session queue"
+            : err?.error === "queue full"
+              ? "session queue is full"
+              : "couldn't edit the session queue",
+          "error",
+        );
+      }
+      return false;
+    },
+    [applySharedTruth, toast],
+  );
+
+  /** Guest transport intent; the host applies it within a beat (≤5s). */
+  const postControl = useCallback(
+    async (hostId: number, control: SharedControl) => {
+      const res = await fetch(`/api/slipstreams/${hostId}/control`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(control),
+      }).catch(() => null);
+      if (!res?.ok) toast("couldn't reach the session", "error");
+    },
+    [toast],
+  );
+
+  const startSharedSession = useCallback(async () => {
+    const q = queueRef.current;
+    if (!q || followRef.current || hostSessionRef.current) return;
+    const cur = currentTrackId(q);
+    if (cur === null) return;
+    const seed = seedEntries(upcoming(q, SHARED_SEED_COUNT), (id) =>
+      metaRef.current.get(id),
+    );
+    const res = await fetch("/api/slipstream/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ queue: seed }),
+    }).catch(() => null);
+    if (!res?.ok) {
+      toast("couldn't start the shared session", "error");
+      return;
+    }
+    const { revision, queue: entries } = (await res.json()) as {
+      revision: number;
+      queue: SharedQueueEntry[];
+    };
+    hostSessionRef.current = { revision, controlSeq: 0, entries };
+    // A deliberate new playback context (like playFrom): the previous
+    // queue is replaced, not parked. Audio is untouched.
+    const order = [cur, ...entries.map((e) => e.id)];
+    setQueue({
+      sourceId: "shared",
+      order,
+      sourceOrder: [...order],
+      position: 0,
+      shuffled: false,
+      shuffleMode: q.shuffleMode,
+      seed: q.seed,
+      repeat: "off",
+      history: [],
+      unplayable: q.unplayable,
+    });
+    publishSharedState();
+    toast("session shared — friends can queue tracks and skip");
+  }, [publishSharedState, setQueue, toast]);
+
+  const stopSharedSession = useCallback(() => {
+    if (!hostSessionRef.current) return;
+    hostSessionRef.current = null;
+    publishSharedState();
+    // Best-effort: the next plain heartbeat self-heals the row anyway.
+    void fetch("/api/slipstream/session", { method: "DELETE" }).catch(
+      () => {},
+    );
+  }, [publishSharedState]);
+  stopSharedSessionRef.current = stopSharedSession;
+
   // ------------------------------------------------------------- actions
 
   const actions = useMemo<PlayerActions>(() => {
@@ -1044,10 +1420,18 @@ export function PlayerProvider({
       if (id !== null) void resolveAndPlay(id);
     };
 
+    /** Whose session queue edits should target; null when not in one. */
+    const sessionHostId = (): number | null => {
+      const f = followRef.current;
+      if (f) return f.shared ? f.host.userId : null;
+      return hostSessionRef.current ? userId : null;
+    };
+
     return {
       playFrom(sourceKey, tracks, startTrackId, opts) {
-        // Choosing your own music is an implicit leave.
+        // Choosing your own music is an implicit leave / stop-sharing.
         if (followRef.current) leaveSlipstreamRef.current();
+        if (hostSessionRef.current) stopSharedSessionRef.current();
         pendingSeekRef.current = null;
         for (const t of tracks) metaRef.current.set(t.id, toQueueTrack(t));
         const playable = tracks.filter((t) => t.streamable).map((t) => t.id);
@@ -1133,13 +1517,31 @@ export function PlayerProvider({
 
       // Hardware media keys route here too — the caps-disabled UI isn't the
       // only entry point, so follow mode gates at the action layer as well.
+      // In a shared session skips become control intents the host applies.
       nextTrack: () => {
-        if (followRef.current) return;
+        const f = followRef.current;
+        if (f) {
+          if (!f.shared) return;
+          const target = f.shared.entries[0];
+          if (!target) {
+            toast("nothing queued — add something first");
+            return;
+          }
+          void postControl(f.host.userId, {
+            type: "play",
+            trackId: target.id,
+          });
+          return;
+        }
         advanceRef.current();
       },
 
       prevTrack() {
-        if (followRef.current) return;
+        const f = followRef.current;
+        if (f) {
+          if (f.shared) void postControl(f.host.userId, { type: "prev" });
+          return;
+        }
         const el = audioRef.current;
         const q = queueRef.current;
         if (!q) return;
@@ -1158,7 +1560,13 @@ export function PlayerProvider({
       },
 
       jumpToTrack(trackId) {
-        if (followRef.current) return;
+        const f = followRef.current;
+        if (f) {
+          if (f.shared?.entries.some((e) => e.id === trackId)) {
+            void postControl(f.host.userId, { type: "play", trackId });
+          }
+          return;
+        }
         pendingSeekRef.current = null;
         const q = queueRef.current;
         if (!q) return;
@@ -1168,8 +1576,9 @@ export function PlayerProvider({
       },
 
       startRadio(track) {
-        // Choosing your own music is an implicit leave.
+        // Choosing your own music is an implicit leave / stop-sharing.
         if (followRef.current) leaveSlipstreamRef.current();
+        if (hostSessionRef.current) stopSharedSessionRef.current();
         pendingSeekRef.current = null;
         radioTriedSeedsRef.current = new Set();
         radioEndedRef.current = false;
@@ -1261,6 +1670,9 @@ export function PlayerProvider({
       upcomingTracks(n) {
         const f = followRef.current;
         if (f) {
+          // Shared session: the agreed list IS what's upcoming (the
+          // 10-track window that drives audio advance is a prefix of it).
+          if (f.shared) return f.shared.entries.slice(0, n).map(entryToTrack);
           // The rest of the host's window after wherever we actually are.
           const anchor = f.localTrackId ?? f.snap.trackId;
           const at = f.snap.window.findIndex((t) => t.id === anchor);
@@ -1279,6 +1691,57 @@ export function PlayerProvider({
       joinSlipstream,
 
       leaveSlipstream,
+
+      startSharedSession: () => void startSharedSession(),
+
+      stopSharedSession() {
+        stopSharedSession();
+        toast("stopped sharing — the queue is yours again");
+      },
+
+      addToSharedQueue(track) {
+        const hostId = sessionHostId();
+        if (hostId === null) return;
+        // Strip to the wire shape — callers may hand us richer objects.
+        const clean: QueueTrack = {
+          id: track.id,
+          title: track.title,
+          artist: track.artist,
+          artistUrl: track.artistUrl,
+          artworkUrl: track.artworkUrl,
+          permalinkUrl: track.permalinkUrl,
+          durationMs: track.durationMs,
+        };
+        metaRef.current.set(clean.id, clean);
+        void postQueueOp(hostId, { op: "add", track: clean }).then((ok) => {
+          if (ok) toast(`queued for the session · ${clean.title}`);
+        });
+      },
+
+      removeFromSharedQueue(trackId) {
+        const hostId = sessionHostId();
+        if (hostId === null) return;
+        void postQueueOp(hostId, { op: "remove", trackId });
+      },
+
+      moveInSharedQueue(trackId, dir) {
+        const hostId = sessionHostId();
+        if (hostId === null) return;
+        const s = followRef.current
+          ? followRef.current.shared
+          : hostSessionRef.current;
+        if (!s) return;
+        const ids = s.entries.map((e) => e.id);
+        const at = ids.indexOf(trackId);
+        const to = at + dir;
+        if (at === -1 || to < 0 || to >= ids.length) return;
+        [ids[at], ids[to]] = [ids[to], ids[at]];
+        void postQueueOp(hostId, {
+          op: "reorder",
+          order: ids,
+          expectedRevision: s.revision,
+        });
+      },
     };
   }, [
     applyLevelerGain,
@@ -1287,10 +1750,17 @@ export function PlayerProvider({
     ensurePlays,
     joinSlipstream,
     leaveSlipstream,
+    postControl,
+    postQueueOp,
     publishFollowState,
     resolveAndPlay,
     setQueue,
+    startSharedSession,
+    stopSharedSession,
+    toast,
+    userId,
   ]);
+  sharedRemoveRef.current = (trackId) => actions.removeFromSharedQueue(trackId);
 
   // Keep `current` in sync with the queue position (not while following —
   // `current` shows the host's track then).
@@ -1343,6 +1813,11 @@ export function PlayerProvider({
     };
   }, []);
 
+  const sharedBeatState = useCallback(() => {
+    const hs = hostSessionRef.current;
+    return hs ? { rev: hs.revision, controlSeq: hs.controlSeq } : null;
+  }, []);
+
   useSlipstreamPublisher({
     // Inert while following — that's what makes chained follows impossible.
     enabled: playing && !slipstream && current !== null,
@@ -1351,6 +1826,11 @@ export function PlayerProvider({
     windowKey,
     buildBeat,
     audioEl: audioElGetter,
+    // Hosting a shared session: 5s beats whose responses double as the
+    // host's state poll (queue by revision, pending control intents).
+    keepaliveMs: shared?.role === "host" ? POLL_MS : HEARTBEAT_MS,
+    shared: sharedBeatState,
+    onShared: applyHostShared,
   });
 
   const state = useMemo<PlayerState>(
@@ -1365,11 +1845,16 @@ export function PlayerProvider({
       stageOpen,
       queue,
       caps: capsOf(
-        slipstream ? "slipstream" : sourceKindOf(queue?.sourceId ?? "likes"),
+        slipstream
+          ? slipstream.shared
+            ? "slipstream-shared"
+            : "slipstream"
+          : sourceKindOf(queue?.sourceId ?? "likes"),
       ),
       slipstream,
+      shared,
     }),
-    [current, playing, queue, slipstream, volume, leveling, stageOpen],
+    [current, playing, queue, shared, slipstream, volume, leveling, stageOpen],
   );
 
   const refs = useMemo<PlayerRefs>(() => ({ audioRef, analyserRef }), []);

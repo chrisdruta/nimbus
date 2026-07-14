@@ -8,7 +8,14 @@
  * rethink.
  */
 
-export type SourceKind = "likes" | "playlist" | "slipstream" | "radio" | "feed";
+export type SourceKind =
+  | "likes"
+  | "playlist"
+  | "slipstream"
+  | "slipstream-shared"
+  | "radio"
+  | "feed"
+  | "shared";
 
 export interface SourceCapabilities {
   /** next/prev */
@@ -54,6 +61,18 @@ export const CAPS: Record<SourceKind, SourceCapabilities> = {
     persists: false,
     restoresFromLibrary: false,
   },
+  // Following a shared (collaborative) session: skip/jump route as control
+  // intents the host applies — the host's audio stays the only clock, so
+  // seeking is still out.
+  "slipstream-shared": {
+    canSkip: true,
+    canJump: true,
+    canShuffle: false,
+    canRepeat: false,
+    canSeek: false,
+    persists: false,
+    restoresFromLibrary: false,
+  },
   // Related-track continuation: a fixed order you can skip through but not
   // reshuffle or jump around in.
   radio: {
@@ -76,6 +95,19 @@ export const CAPS: Record<SourceKind, SourceCapabilities> = {
     persists: true,
     restoresFromLibrary: false,
   },
+  // Hosting a shared session (and its leftover queue after stop-sharing):
+  // a normal local queue, but shuffle/repeat would rewrite or loop the
+  // agreed order out from under collaborators, so both stay off. Snapshots
+  // persist like radio/feed — there's no single library walk behind it.
+  shared: {
+    canSkip: true,
+    canJump: true,
+    canShuffle: false,
+    canRepeat: false,
+    canSeek: true,
+    persists: true,
+    restoresFromLibrary: false,
+  },
 };
 
 /** Parse a QueueState.sourceId
@@ -83,6 +115,7 @@ export const CAPS: Record<SourceKind, SourceCapabilities> = {
 export function sourceKindOf(sourceId: string): SourceKind {
   if (sourceId === "likes") return "likes";
   if (sourceId === "feed") return "feed";
+  if (sourceId === "shared") return "shared";
   if (sourceId.startsWith("playlist:")) return "playlist";
   if (sourceId.startsWith("radio:")) return "radio";
   return "likes"; // unknown ids behave like the default local source

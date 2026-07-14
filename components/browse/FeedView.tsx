@@ -25,7 +25,7 @@ export function FeedView() {
   const { items, tracks, loadMore, hasMore, autoDepthReached, loading, error, unauthorized, retry } =
     useFeed();
   const actions = usePlayerActions();
-  const { queue } = usePlayerState();
+  const { queue, shared } = usePlayerState();
   const sentinelRef = useRef<HTMLDivElement>(null);
   const headerEndRef = useRef<HTMLDivElement>(null);
   const [slim, setSlim] = useState(false);
@@ -177,6 +177,9 @@ export function FeedView() {
                   : actions.playFrom(FEED_SOURCE_ID, tracks, track.id)
             }
             onStartRadio={() => actions.startRadio(track)}
+            onAddToSession={
+              shared ? () => actions.addToSharedQueue(track) : undefined
+            }
           />
         ))}
         {loading &&

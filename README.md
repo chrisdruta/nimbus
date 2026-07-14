@@ -21,7 +21,8 @@ always credit and link back to their creator and SoundCloud.
   the visualizers and volume leveling depend on); native playback is the
   fallback for MSE-less browsers.
 - **Your library**: likes and playlists, cursor-paginated with infinite
-  scroll, artwork-tinted headers, the signature chip tiles.
+  scroll, artwork-tinted headers, the signature chip tiles — or a compact
+  list view, with a toggle to hide unplayable tracks (both remembered).
 - **A queue you own**: seeded Fisher–Yates shuffle, persisted
   order/position/history across reloads, repeat off/all/one,
   history-aware prev, auto-skip of unstreamable tracks.
@@ -37,6 +38,10 @@ always credit and link back to their creator and SoundCloud.
   join someone's slipstream to hear what they hear, position-synced and
   read-only. Your own queue parks untouched and every listener streams
   through their own account — leave and you're back exactly where you were.
+- **Shared sessions**: share your queue and it becomes everyone's — friends
+  who join can queue tracks from their own library (credited by name),
+  remove and reorder what's coming, and skip for the whole room. The host's
+  player stays the clock; edits and skips propagate within seconds.
 - **The stage**: five fullscreen modes — _art_, _spectrum_, _ridgeline_,
   _waterfall_, _scope_ — switchable with ←/→ or 1–5, tinted from the track
   artwork, beat-reactive via onset detection, with per-scene presets and
@@ -103,6 +108,6 @@ Architecture notes for contributors (and Claude) live in
 ## Roadmap
 
 Feature tracking, milestone history, and validation records live in
-[`docs/ROADMAP.md`](docs/ROADMAP.md). Up next: a visual redesign pass on
-the scenes, feed/reposts/related-track continuation, richer "recently
-played" views, and a Tauri client on this same backend.
+[`docs/ROADMAP.md`](docs/ROADMAP.md). Up next: collection auto-continue
+into radio, richer "recently played" views, casting to a TV, and a Tauri
+client on this same backend.

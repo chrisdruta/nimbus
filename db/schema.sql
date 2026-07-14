@@ -73,6 +73,27 @@ CREATE TABLE IF NOT EXISTS slipstreams (
 CREATE INDEX IF NOT EXISTS slipstreams_live_idx
   ON slipstreams (updated_at DESC) WHERE playing;
 
+-- Shared slipstream sessions: one row per host, created by an explicit
+-- "share session" action. queue is the agreed upcoming list
+-- (SharedQueueEntry[] jsonb — display metadata only; every participant
+-- resolves streams via their own token and quota). revision increments on
+-- every queue change so pollers skip unchanged payloads. control is a
+-- one-slot last-writer-wins transport intent ({"type":"play","trackId":N}
+-- | {"type":"prev"}) guarded by control_seq; the host applies it — the
+-- host's audio element stays the only clock. A session is live only while
+-- the host's slipstreams presence is fresh, and any plain (non-shared)
+-- heartbeat from the host deletes the row, so stale sessions self-heal.
+-- Cardinality = user count; no cleanup job.
+CREATE TABLE IF NOT EXISTS slipstream_sessions (
+  host_id     bigint PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  queue       jsonb  NOT NULL DEFAULT '[]',
+  revision    bigint NOT NULL DEFAULT 1,
+  control     jsonb,
+  control_seq bigint NOT NULL DEFAULT 0,
+  started_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
+
 -- One row of app-wide knobs. The global limit stays under SoundCloud's
 -- 15,000 stream-starts/day client cap to leave concurrency headroom.
 CREATE TABLE IF NOT EXISTS app_settings (

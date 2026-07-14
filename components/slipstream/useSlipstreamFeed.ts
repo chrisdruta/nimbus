@@ -14,6 +14,8 @@ export interface FeedRow {
     artworkUrl: string | null;
   } | null;
   updatedAt: string;
+  /** Host is running a shared (collaborative) session. */
+  shared: boolean;
 }
 
 /** Visibility-gated poll of who's listening right now. Mount once (the

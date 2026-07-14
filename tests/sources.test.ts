@@ -14,6 +14,10 @@ describe("sourceKindOf", () => {
     expect(sourceKindOf("")).toBe("likes");
     expect(sourceKindOf("garbage")).toBe("likes");
   });
+
+  test("shared-session queue maps to the shared kind", () => {
+    expect(sourceKindOf("shared")).toBe("shared");
+  });
 });
 
 describe("capsOf", () => {
@@ -43,9 +47,41 @@ describe("capsOf", () => {
     );
   });
 
+  test("shared host keeps transport but loses shuffle/repeat; snapshots persist", () => {
+    expect(capsOf("shared")).toEqual({
+      canSkip: true,
+      canJump: true,
+      canShuffle: false,
+      canRepeat: false,
+      canSeek: true,
+      persists: true,
+      restoresFromLibrary: false,
+    });
+  });
+
+  test("shared follower gets intent-routed transport but never seeks or persists", () => {
+    expect(capsOf("slipstream-shared")).toEqual({
+      canSkip: true,
+      canJump: true,
+      canShuffle: false,
+      canRepeat: false,
+      canSeek: false,
+      persists: false,
+      restoresFromLibrary: false,
+    });
+  });
+
   test("every kind has a caps row", () => {
     expect(Object.keys(CAPS).sort()).toEqual(
-      ["likes", "playlist", "radio", "slipstream", "feed"].sort(),
+      [
+        "likes",
+        "playlist",
+        "radio",
+        "slipstream",
+        "slipstream-shared",
+        "feed",
+        "shared",
+      ].sort(),
     );
   });
 });

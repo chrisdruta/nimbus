@@ -6,15 +6,25 @@ import {
   sourceKey,
   type TrackSource,
 } from "@/lib/hooks/useLibrary";
+import type { ProviderTrack } from "@/lib/provider";
 import {
   usePlayerActions,
   usePlayerState,
 } from "@/components/player/PlayerProvider";
 import { HeaderBand } from "./HeaderBand";
 import { TrackTile } from "./TrackTile";
+import { TrackRow } from "./TrackRow";
 import { TileSkeleton } from "./TileSkeleton";
 import { EmptyState } from "./EmptyState";
-import { IconPlay, IconShuffle } from "@/components/ui/icons";
+import { useBrowseDisplayPrefs } from "./useBrowseDisplayPrefs";
+import {
+  IconEye,
+  IconEyeOff,
+  IconGrid,
+  IconList,
+  IconPlay,
+  IconShuffle,
+} from "@/components/ui/icons";
 import { artworkSized } from "@/lib/artwork";
 import { currentTrackId } from "@/lib/queue";
 import { useAuthenticatedUserId } from "@/components/auth/AuthenticatedUser";
@@ -37,7 +47,7 @@ export function BrowseView({
     userId,
   );
   const actions = usePlayerActions();
-  const { queue } = usePlayerState();
+  const { queue, shared } = usePlayerState();
   const sentinelRef = useRef<HTMLDivElement>(null);
   // The hook holds the whole collection; the DOM gets a growing window.
   const [visibleCount, setVisibleCount] = useState(WINDOW_STEP);
@@ -83,13 +93,35 @@ export function BrowseView({
     return () => observer.disconnect();
   }, []);
 
+  const { layout, setLayout, hideUnplayable, setHideUnplayable } =
+    useBrowseDisplayPrefs();
+
   const playingId =
     queue && queue.sourceId === key ? currentTrackId(queue) : null;
   const playableCount = useMemo(
     () => tracks.filter((t) => t.streamable).length,
     [tracks],
   );
-  const visible = tracks.slice(0, visibleCount);
+  // Display-only filter: every player call (playFrom/syncSource/register)
+  // keeps the unfiltered list — hiding never changes what plays.
+  const displayTracks = useMemo(
+    () => (hideUnplayable ? tracks.filter((t) => t.streamable) : tracks),
+    [tracks, hideUnplayable],
+  );
+  const visible = displayTracks.slice(0, visibleCount);
+
+  const playTrack = (id: number) =>
+    id === playingId
+      ? actions.togglePlay()
+      : queue?.sourceId === key
+        ? actions.jumpToTrack(id)
+        : actions.playFrom(key, tracks, id);
+
+  // In a shared session (hosting or joined), tiles/rows grow a hover
+  // "queue for session" affordance.
+  const addToSession = shared
+    ? (t: ProviderTrack) => () => actions.addToSharedQueue(t)
+    : undefined;
 
   if (unauthorized) {
     return (
@@ -185,6 +217,57 @@ export function BrowseView({
       />
       <div ref={headerEndRef} className="h-px" />
 
+      <div className="flex items-center gap-1.5 px-6 pt-6 xl:px-10">
+        {hideUnplayable && displayTracks.length < tracks.length && (
+          <span className="text-xs text-muted">
+            showing {displayTracks.length} of {tracks.length}
+          </span>
+        )}
+        <div className="ml-auto flex items-center gap-1.5">
+          <button
+            aria-label={
+              hideUnplayable ? "show unplayable" : "hide unplayable"
+            }
+            title={hideUnplayable ? "show unplayable" : "hide unplayable"}
+            aria-pressed={hideUnplayable}
+            onClick={() => setHideUnplayable(!hideUnplayable)}
+            className={`flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition ${
+              hideUnplayable
+                ? "bg-white/10 text-white"
+                : "text-muted hover:text-white"
+            }`}
+          >
+            {hideUnplayable ? <IconEyeOff size={15} /> : <IconEye size={15} />}
+          </button>
+          <button
+            aria-label="grid view"
+            title="grid view"
+            aria-pressed={layout === "grid"}
+            onClick={() => setLayout("grid")}
+            className={`flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition ${
+              layout === "grid"
+                ? "bg-white/10 text-white"
+                : "text-muted hover:text-white"
+            }`}
+          >
+            <IconGrid size={15} />
+          </button>
+          <button
+            aria-label="list view"
+            title="list view"
+            aria-pressed={layout === "list"}
+            onClick={() => setLayout("list")}
+            className={`flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition ${
+              layout === "list"
+                ? "bg-white/10 text-white"
+                : "text-muted hover:text-white"
+            }`}
+          >
+            <IconList size={15} />
+          </button>
+        </div>
+      </div>
+
       {error && (
         <p className="px-6 py-3 text-sm text-accent">
           {error}{" "}
@@ -194,29 +277,54 @@ export function BrowseView({
         </p>
       )}
 
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4 px-6 pt-6 xl:grid-cols-[repeat(auto-fill,minmax(240px,1fr))] xl:gap-6 xl:px-10">
-        {visible.map((t) => (
-          <TrackTile
-            key={t.id}
-            track={t}
-            isCurrent={t.id === playingId}
-            onPlay={() =>
-              t.id === playingId
-                ? actions.togglePlay()
-                : queue?.sourceId === key
-                  ? actions.jumpToTrack(t.id)
-                  : actions.playFrom(key, tracks, t.id)
-            }
-            onStartRadio={() => actions.startRadio(t)}
-          />
-        ))}
-        {loading &&
-          Array.from({ length: 12 }, (_, i) => <TileSkeleton key={`s${i}`} />)}
-      </div>
+      {layout === "grid" ? (
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4 px-6 pt-3 xl:grid-cols-[repeat(auto-fill,minmax(240px,1fr))] xl:gap-6 xl:px-10">
+          {visible.map((t) => (
+            <TrackTile
+              key={t.id}
+              track={t}
+              isCurrent={t.id === playingId}
+              onPlay={() => playTrack(t.id)}
+              onStartRadio={() => actions.startRadio(t)}
+              onAddToSession={addToSession?.(t)}
+            />
+          ))}
+          {loading &&
+            Array.from({ length: 12 }, (_, i) => (
+              <TileSkeleton key={`s${i}`} />
+            ))}
+        </div>
+      ) : (
+        <div className="flex flex-col px-3 pt-3 xl:px-7">
+          {visible.map((t) => (
+            <TrackRow
+              key={t.id}
+              track={t}
+              isCurrent={t.id === playingId}
+              onPlay={() => playTrack(t.id)}
+              onStartRadio={() => actions.startRadio(t)}
+              onAddToSession={addToSession?.(t)}
+            />
+          ))}
+          {loading &&
+            Array.from({ length: 12 }, (_, i) => (
+              <div
+                key={`s${i}`}
+                className="my-0.5 h-[56px] animate-pulse rounded-md bg-bar/40"
+              />
+            ))}
+        </div>
+      )}
 
       {!loading && !error && tracks.length === 0 && complete && (
         <EmptyState message="nothing here yet" />
       )}
+      {!loading &&
+        !error &&
+        tracks.length > 0 &&
+        displayTracks.length === 0 && (
+          <EmptyState message="everything here is unavailable" />
+        )}
 
       <div ref={sentinelRef} className="h-px" />
     </div>

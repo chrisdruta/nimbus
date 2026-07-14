@@ -21,6 +21,10 @@ export class BadRequestError extends Error {}
 /** Requested resource doesn't exist (or is gone/stale) — maps to 404. */
 export class NotFoundError extends Error {}
 
+/** State precondition failed (e.g. queue revision mismatch) — maps to 409.
+ * The client should refresh its view and retry. */
+export class ConflictError extends Error {}
+
 function toResponse(err: unknown): NextResponse {
   const privateHeaders = { "Cache-Control": "private, no-store" };
   if (
@@ -49,6 +53,12 @@ function toResponse(err: unknown): NextResponse {
     return NextResponse.json(
       { error: err.message },
       { status: 404, headers: privateHeaders },
+    );
+  }
+  if (err instanceof ConflictError) {
+    return NextResponse.json(
+      { error: err.message },
+      { status: 409, headers: privateHeaders },
     );
   }
   if (err instanceof TrackUnavailableError) {

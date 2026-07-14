@@ -1,10 +1,17 @@
 "use client";
 
 import { artworkSized } from "@/lib/artwork";
-import { IconCloud, IconPanelRight } from "@/components/ui/icons";
+import {
+  IconChevronDown,
+  IconChevronUp,
+  IconCloud,
+  IconPanelRight,
+  IconX,
+} from "@/components/ui/icons";
 import { formatDuration } from "@/lib/format";
 import { currentTrackId, type QueueTrack } from "@/lib/queue";
 import { radioSeedOf } from "@/lib/radio";
+import type { SharedQueueEntry } from "@/lib/shared-queue";
 import type { FeedRow } from "@/components/slipstream/useSlipstreamFeed";
 import { usePlayerActions, usePlayerState } from "./PlayerProvider";
 
@@ -47,6 +54,101 @@ function Row({
   );
 }
 
+/** A shared-session entry: jump on click, hover reveals move/remove.
+ * (A div with button semantics — the affordances are real <button>s and
+ * buttons can't nest.) */
+function SharedRow({
+  entry,
+  onJump,
+  onRemove,
+  onMove,
+  isFirst,
+  isLast,
+}: {
+  entry: SharedQueueEntry;
+  onJump?: () => void;
+  onRemove: () => void;
+  onMove: (dir: -1 | 1) => void;
+  isFirst: boolean;
+  isLast: boolean;
+}) {
+  const art = artworkSized(entry.artworkUrl, "large");
+  const iconBtn =
+    "flex h-6 w-6 cursor-pointer items-center justify-center rounded-full text-muted transition hover:text-white disabled:cursor-default disabled:opacity-30";
+  return (
+    <div
+      role="button"
+      tabIndex={onJump ? 0 : -1}
+      onClick={onJump}
+      onKeyDown={(e) => {
+        if (onJump && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          onJump();
+        }
+      }}
+      className={`group flex w-full items-center gap-3 rounded px-2 py-1.5 text-left ${
+        onJump ? "cursor-pointer hover:bg-white/5" : ""
+      }`}
+    >
+      {art ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={art} alt="" className="h-9 w-9 rounded object-cover" />
+      ) : (
+        <div className="flex h-9 w-9 items-center justify-center rounded bg-elem/40 text-muted">
+          <IconCloud size={14} />
+        </div>
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm">{entry.title}</p>
+        <p className="truncate text-xs text-muted">
+          {entry.artist}
+          {entry.addedBy && ` · added by ${entry.addedBy}`}
+        </p>
+      </div>
+      <span className="hidden shrink-0 items-center group-hover:flex">
+        <button
+          aria-label="move up"
+          title="move up"
+          disabled={isFirst}
+          onClick={(e) => {
+            e.stopPropagation();
+            onMove(-1);
+          }}
+          className={iconBtn}
+        >
+          <IconChevronUp size={13} />
+        </button>
+        <button
+          aria-label="move down"
+          title="move down"
+          disabled={isLast}
+          onClick={(e) => {
+            e.stopPropagation();
+            onMove(1);
+          }}
+          className={iconBtn}
+        >
+          <IconChevronDown size={13} />
+        </button>
+        <button
+          aria-label="remove from session"
+          title="remove"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove();
+          }}
+          className={`${iconBtn} hover:text-accent`}
+        >
+          <IconX size={12} />
+        </button>
+      </span>
+      <span className="shrink-0 text-xs tabular-nums text-muted group-hover:hidden">
+        {formatDuration(entry.durationMs)}
+      </span>
+    </div>
+  );
+}
+
 /** Who's live, as rows the user can join/leave from. */
 function LiveSection({ rows, you }: { rows: FeedRow[]; you: number | null }) {
   const { slipstream } = usePlayerState();
@@ -78,6 +180,11 @@ function LiveSection({ rows, you }: { rows: FeedRow[]; you: number | null }) {
                 <p className="truncate text-sm">
                   {name}
                   {self && <span className="text-muted"> (you)</span>}
+                  {r.shared && (
+                    <span className="ml-1.5 rounded-full bg-accent/15 px-1.5 py-px text-[10px] text-accent">
+                      shared
+                    </span>
+                  )}
                 </p>
                 {r.track && (
                   <p className="truncate text-xs text-muted">
@@ -106,7 +213,11 @@ function LiveSection({ rows, you }: { rows: FeedRow[]; you: number | null }) {
               ) : (
                 <button
                   onClick={() => void actions.joinSlipstream(r.hostId)}
-                  title={`join ${name}'s slipstream`}
+                  title={
+                    r.shared
+                      ? `join ${name}'s shared session`
+                      : `join ${name}'s slipstream`
+                  }
                   className="flex w-full cursor-pointer items-center gap-2.5 rounded px-2 py-1.5 text-left transition hover:bg-white/5"
                 >
                   {inner}
@@ -132,24 +243,27 @@ export function SidePanel({
   feed: FeedRow[];
   you: number | null;
 }) {
-  const { current, shuffled, shuffleMode, caps, slipstream, queue } =
+  const { current, shuffled, shuffleMode, caps, slipstream, shared, queue } =
     usePlayerState();
   const actions = usePlayerActions();
   const upNext = actions.upcomingTracks(40);
   const hostName = slipstream?.host.username ?? "member";
+  const hosting = shared?.role === "host";
   const radioSeed =
     !slipstream && queue ? radioSeedOf(queue.sourceId) : null;
   const radioSeedTitle =
     radioSeed !== null ? actions.getMeta(radioSeed)?.title : undefined;
-  const upNextLabel = slipstream
-    ? `up next · from ${hostName}`
-    : radioSeed !== null
-      ? "up next · radio"
-      : shuffled
-        ? shuffleMode === "classic"
-          ? "up next · shuffled"
-          : `up next · shuffled (${shuffleMode})`
-        : "up next";
+  const upNextLabel = shared
+    ? "up next · shared"
+    : slipstream
+      ? `up next · from ${hostName}`
+      : radioSeed !== null
+        ? "up next · radio"
+        : shuffled
+          ? shuffleMode === "classic"
+            ? "up next · shuffled"
+            : `up next · shuffled (${shuffleMode})`
+          : "up next";
   // The queue engine still holds the parked local queue while following.
   const parkedId = slipstream && queue ? currentTrackId(queue) : null;
   const parked = parkedId !== null ? actions.getMeta(parkedId) : undefined;
@@ -158,16 +272,27 @@ export function SidePanel({
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between p-4 pb-2">
         <h2 className="text-sm font-semibold tracking-widest text-muted uppercase">
-          {slipstream ? "Slipstream" : "Queue"}
+          {slipstream ? "Slipstream" : hosting ? "Shared session" : "Queue"}
         </h2>
-        <button
-          aria-label="collapse queue"
-          title="collapse"
-          onClick={onClose}
-          className="cursor-pointer text-muted transition hover:text-white"
-        >
-          <IconPanelRight size={16} />
-        </button>
+        <div className="flex items-center gap-3">
+          {!slipstream && !hosting && current && (
+            <button
+              onClick={actions.startSharedSession}
+              title="share this queue — friends can join, queue tracks, and skip"
+              className="shrink-0 cursor-pointer text-xs text-muted transition hover:text-accent"
+            >
+              share session
+            </button>
+          )}
+          <button
+            aria-label="collapse queue"
+            title="collapse"
+            onClick={onClose}
+            className="cursor-pointer text-muted transition hover:text-white"
+          >
+            <IconPanelRight size={16} />
+          </button>
+        </div>
       </div>
       {!slipstream && radioSeedTitle && (
         <div className="px-4 pb-2">
@@ -176,16 +301,29 @@ export function SidePanel({
           </span>
         </div>
       )}
+      {hosting && (
+        <div className="flex items-center justify-between px-4 pb-2">
+          <span className="truncate text-xs text-accent">
+            sharing your queue — friends can edit it
+          </span>
+          <button
+            onClick={actions.stopSharedSession}
+            className="shrink-0 cursor-pointer text-xs text-muted transition hover:text-accent"
+          >
+            stop sharing
+          </button>
+        </div>
+      )}
       {slipstream && (
         <div className="flex items-center justify-between px-4 pb-2">
           <span className="truncate text-xs text-accent">
-            in {hostName}&apos;s slipstream
+            in {hostName}&apos;s {slipstream.shared ? "shared session" : "slipstream"}
           </span>
           <button
             onClick={actions.leaveSlipstream}
             className="shrink-0 cursor-pointer text-xs text-muted transition hover:text-accent"
           >
-            leave slipstream
+            leave
           </button>
         </div>
       )}
@@ -210,22 +348,40 @@ export function SidePanel({
         ) : (
           <>
             <p className="px-2 py-1 pt-3 text-xs text-muted">{upNextLabel}</p>
-            {upNext.length === 0 && (
+            {(shared ? shared.entries.length : upNext.length) === 0 && (
               <p className="px-2 py-2 text-sm text-muted">
-                {slipstream ? `waiting for ${hostName}…` : "end of queue"}
+                {shared
+                  ? "nothing queued — add tracks from your library"
+                  : slipstream
+                    ? `waiting for ${hostName}…`
+                    : "end of queue"}
               </p>
             )}
           </>
         )}
-        {upNext.map((t) => (
-          <Row
-            key={t.id}
-            track={t}
-            onClick={
-              caps.canJump ? () => actions.jumpToTrack(t.id) : undefined
-            }
-          />
-        ))}
+        {shared
+          ? shared.entries.map((e, i) => (
+              <SharedRow
+                key={e.id}
+                entry={e}
+                isFirst={i === 0}
+                isLast={i === shared.entries.length - 1}
+                onJump={
+                  caps.canJump ? () => actions.jumpToTrack(e.id) : undefined
+                }
+                onRemove={() => actions.removeFromSharedQueue(e.id)}
+                onMove={(dir) => actions.moveInSharedQueue(e.id, dir)}
+              />
+            ))
+          : upNext.map((t) => (
+              <Row
+                key={t.id}
+                track={t}
+                onClick={
+                  caps.canJump ? () => actions.jumpToTrack(t.id) : undefined
+                }
+              />
+            ))}
       </div>
       {slipstream && parked && (
         <div className="flex items-center justify-between gap-2 border-t border-black/40 px-4 py-3">

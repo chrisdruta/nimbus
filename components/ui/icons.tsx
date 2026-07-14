@@ -6,9 +6,13 @@
 
 import {
   AudioWaveform,
+  ChevronDown,
   ChevronUp,
   Cloud,
+  Eye,
+  EyeOff,
   Heart,
+  LayoutGrid,
   ListMusic,
   Maximize2,
   Menu,
@@ -16,8 +20,10 @@ import {
   Pause,
   PanelRightClose,
   Play,
+  Plus,
   Radio,
   Repeat,
+  Rows3,
   Share,
   Shuffle,
   SkipBack,
@@ -102,6 +108,24 @@ export const IconX = ({ size = 20, ...p }: IconProps) => (
 );
 export const IconChevronUp = ({ size = 20, ...p }: IconProps) => (
   <ChevronUp size={size} {...p} />
+);
+export const IconChevronDown = ({ size = 20, ...p }: IconProps) => (
+  <ChevronDown size={size} {...p} />
+);
+export const IconPlus = ({ size = 20, ...p }: IconProps) => (
+  <Plus size={size} {...p} />
+);
+export const IconGrid = ({ size = 20, ...p }: IconProps) => (
+  <LayoutGrid size={size} {...p} />
+);
+export const IconList = ({ size = 20, ...p }: IconProps) => (
+  <Rows3 size={size} {...p} />
+);
+export const IconEye = ({ size = 20, ...p }: IconProps) => (
+  <Eye size={size} {...p} />
+);
+export const IconEyeOff = ({ size = 20, ...p }: IconProps) => (
+  <EyeOff size={size} {...p} />
 );
 export const IconPanelRight = ({ size = 20, ...p }: IconProps) => (
   <PanelRightClose size={size} {...p} />

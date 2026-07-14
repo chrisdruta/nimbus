@@ -14,14 +14,18 @@ import { ShuffleMenu } from "./ShuffleMenu";
 import { usePlayerActions, usePlayerState } from "./PlayerProvider";
 
 export function TransportControls() {
-  const { playing, shuffled, shuffleMode, repeat, current, caps } =
+  const { playing, shuffled, shuffleMode, repeat, current, caps, slipstream } =
     usePlayerState();
   const actions = usePlayerActions();
   const [menuOpen, setMenuOpen] = useState(false);
   const disabled = current === null;
   // Present when the source (not the moment) forbids a control.
-  const hostHint = (allowed: boolean) =>
-    allowed ? undefined : "host controls playback";
+  const hostHint = (allowed: boolean) => {
+    if (allowed || !slipstream) return undefined;
+    return slipstream.shared
+      ? "not in shared sessions"
+      : "host controls playback";
+  };
 
   const side = "cursor-pointer text-muted transition hover:text-white disabled:cursor-default disabled:opacity-40";
 

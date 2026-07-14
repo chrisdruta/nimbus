@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { HEARTBEAT_MS } from "@/lib/slipstream";
 import type { QueueTrack } from "@/lib/queue";
+import type { SharedWire } from "@/lib/shared-queue";
 
 /** Coalesce a scrub or triple-skip into one beat. */
 const PUBLISH_DEBOUNCE_MS = 1_000;
@@ -27,6 +28,16 @@ interface PublisherOptions {
   /** Reads refs at send time so the payload is always self-consistent. */
   buildBeat: () => PublishedBeat | null;
   audioEl: () => HTMLAudioElement | null;
+  /** Keepalive cadence — HEARTBEAT_MS normally, POLL_MS while hosting a
+   * shared session (the beat response doubles as the host's state poll). */
+  keepaliveMs?: number;
+  /** Read at send time: non-null while hosting a shared session. The beat
+   * then carries sharedRev/controlSeq (which also keeps the session row
+   * alive — plain beats delete it server-side). */
+  shared?: () => { rev: number; controlSeq: number } | null;
+  /** Shared-session state from the beat response (queue when the revision
+   * moved, a control intent when one is pending). */
+  onShared?: (wire: SharedWire) => void;
 }
 
 /**
@@ -36,12 +47,26 @@ interface PublisherOptions {
  * Every send is best-effort — presence must never disturb playback.
  */
 export function useSlipstreamPublisher(opts: PublisherOptions) {
-  const { enabled, trackId, playing, windowKey, buildBeat, audioEl } = opts;
+  const {
+    enabled,
+    trackId,
+    playing,
+    windowKey,
+    buildBeat,
+    audioEl,
+    keepaliveMs = HEARTBEAT_MS,
+    shared,
+    onShared,
+  } = opts;
 
   const lastWindowKeyRef = useRef<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const enabledRef = useRef(enabled);
   enabledRef.current = enabled;
+  const sharedRef = useRef(shared);
+  sharedRef.current = shared;
+  const onSharedRef = useRef(onShared);
+  onSharedRef.current = onShared;
 
   const send = useCallback(
     async (over?: { playing: boolean }) => {
@@ -54,6 +79,11 @@ export function useSlipstreamPublisher(opts: PublisherOptions) {
         playing: over?.playing ?? beat.playing,
       };
       if (key !== lastWindowKeyRef.current) body.window = beat.window;
+      const sharedState = sharedRef.current?.() ?? null;
+      if (sharedState) {
+        body.sharedRev = sharedState.rev;
+        body.controlSeq = sharedState.controlSeq;
+      }
       try {
         const res = await fetch("/api/slipstream", {
           method: "POST",
@@ -62,6 +92,12 @@ export function useSlipstreamPublisher(opts: PublisherOptions) {
         });
         // Only remember the window as sent when the server took it.
         if (res.ok && body.window !== undefined) lastWindowKeyRef.current = key;
+        if (res.ok && sharedState) {
+          const data = (await res.json().catch(() => null)) as {
+            shared?: SharedWire;
+          } | null;
+          if (data?.shared) onSharedRef.current?.(data.shared);
+        }
       } catch {
         // best-effort
       }
@@ -93,12 +129,15 @@ export function useSlipstreamPublisher(opts: PublisherOptions) {
     prevEnabledRef.current = enabled;
   }, [enabled, trackId, playing, windowKey, schedule, send]);
 
-  // Slow keepalive so a quiet host doesn't go stale mid-track.
+  // Keepalive so a quiet host doesn't go stale mid-track. A cadence change
+  // (start/stop sharing) also schedules a prompt beat so the session's
+  // state channel opens without waiting a full interval.
   useEffect(() => {
     if (!enabled) return;
-    const iv = setInterval(() => void send(), HEARTBEAT_MS);
+    schedule();
+    const iv = setInterval(() => void send(), keepaliveMs);
     return () => clearInterval(iv);
-  }, [enabled, send]);
+  }, [enabled, keepaliveMs, schedule, send]);
 
   // Host seeks propagate (through the same debounce).
   useEffect(() => {
@@ -119,10 +158,17 @@ export function useSlipstreamPublisher(opts: PublisherOptions) {
       if (!enabledRef.current) return;
       const beat = buildBeat();
       if (!beat) return;
+      // The beacon must keep carrying sharedRev while hosting a shared
+      // session — a plain beat would delete the session row and break
+      // quick-reload revival.
+      const sharedState = sharedRef.current?.() ?? null;
       const body = JSON.stringify({
         trackId: beat.trackId,
         positionMs: beat.positionMs,
         playing: false,
+        ...(sharedState
+          ? { sharedRev: sharedState.rev, controlSeq: sharedState.controlSeq }
+          : {}),
       });
       navigator.sendBeacon?.(
         "/api/slipstream",
