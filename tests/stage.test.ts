@@ -17,6 +17,7 @@ describe("stage modes", () => {
     // Removed scenes: stale persisted prefs must fall through to default.
     expect(isStageMode("radial")).toBe(false);
     expect(isStageMode("particles")).toBe(false);
+    expect(isStageMode("waterfall")).toBe(false);
     expect(isStageMode(3)).toBe(false);
     expect(isStageMode(undefined)).toBe(false);
   });

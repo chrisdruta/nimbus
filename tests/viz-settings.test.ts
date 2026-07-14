@@ -11,7 +11,7 @@ import {
   withReset,
   type SceneSettingsPayload,
 } from "../lib/viz/settings";
-import { SCENE_META } from "../lib/viz/scene";
+import { STAGE_META } from "../lib/stage";
 
 describe("isSceneSettingsPayload", () => {
   test("accepts a well-formed payload", () => {
@@ -87,22 +87,22 @@ describe("resolveDsp", () => {
 
   test("other scenes always run default DSP", () => {
     const p = withOverride(null, "bars", "barCount", 96);
-    const dsp = resolveDsp("waterfall", p);
+    const dsp = resolveDsp("ridge", p);
     expect(dsp.barCount).toBe(SETTINGS_DEFAULTS.bars.barCount);
     expect(dsp.tuning.gravity).toBe(SETTINGS_DEFAULTS.bars.gravity);
   });
 });
 
 describe("registry coherence", () => {
-  test("every scene has fields and at least two presets", () => {
-    for (const { id } of SCENE_META) {
+  test("every stage mode has fields and at least two presets", () => {
+    for (const { id } of STAGE_META) {
       expect(SETTINGS_FIELDS[id].length).toBeGreaterThan(0);
       expect(PRESETS[id].length).toBeGreaterThanOrEqual(2);
     }
   });
 
   test("preset values reference declared fields within range", () => {
-    for (const { id } of SCENE_META) {
+    for (const { id } of STAGE_META) {
       const fields = new Map(SETTINGS_FIELDS[id].map((f) => [f.key, f]));
       for (const preset of PRESETS[id]) {
         for (const [key, value] of Object.entries(preset.values)) {

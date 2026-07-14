@@ -1,10 +1,12 @@
 /**
- * Per-scene customization: named presets plus advanced overrides, stored
+ * Per-mode customization: named presets plus advanced overrides, stored
  * as one versioned pref payload. Field definitions drive both validation
  * (clamping) and the settings panel UI, so knobs stay in one place.
+ * Keyed by StageMode — the pure-artwork "art" mode has knobs too.
  */
 
 import type { SceneId } from "./scene";
+import type { StageMode } from "@/lib/stage";
 import type { SpectrumTuning } from "./dsp";
 import { pianoBand } from "./piano";
 
@@ -37,40 +39,41 @@ export interface RidgeSettings {
   lineWeight: number;
 }
 
-export interface WaterfallSettings {
-  /** Seconds of history across the canvas width. */
-  scrollSec: number;
-  /** Pre-colormap level multiplier. */
-  intensity: number;
-  /** Hue rotation across the ramp, degrees. */
-  hueSpread: number;
-}
-
 export interface PianoSettings {
   /** Keyboard size in semitones (49/61/72/88, instrument-anchored). */
   keys: number;
   /** Key-release fall speed (SpectrumProcessor gravity). */
   gravity: number;
-  /** Beam strength above the keyboard, 0 disables. */
+  /** Light strength above the keyboard (roll brightness / beam alpha). */
   glow: number;
   noiseFloor: number;
   /** Spectral tilt — lifts high notes whose fundamentals run quieter. */
   tiltDbPerOct: number;
   /** Octave markers on the C keys. */
   labels: boolean;
+  /** Sequencer roll: notes scroll upward over time; off = static beams. */
+  roll: boolean;
+  /** Roll note gate: only key lights above this level enter the history. */
+  gate: number;
+}
+
+export interface ArtSettings {
+  /** The slow scale swell on the centered artwork. */
+  breathe: boolean;
 }
 
 export interface SceneSettingsMap {
+  art: ArtSettings;
   bars: SpectrumSettings;
   scope: ScopeSettings;
   ridge: RidgeSettings;
-  waterfall: WaterfallSettings;
   piano: PianoSettings;
 }
 
-export type SceneVisualSettings = SceneSettingsMap[SceneId];
+export type SceneVisualSettings = SceneSettingsMap[StageMode];
 
 export const SETTINGS_DEFAULTS: SceneSettingsMap = {
+  art: { breathe: true },
   bars: {
     barCount: 64,
     gravity: 9,
@@ -84,7 +87,6 @@ export const SETTINGS_DEFAULTS: SceneSettingsMap = {
   },
   scope: { glow: 0.6, trail: 0.65, gainTarget: 0.35, lineWeight: 1.75 },
   ridge: { rows: 36, historySec: 3.2, lineWeight: 1.8 },
-  waterfall: { scrollSec: 14, intensity: 1, hueSpread: 40 },
   piano: {
     keys: 72,
     gravity: 14,
@@ -92,6 +94,8 @@ export const SETTINGS_DEFAULTS: SceneSettingsMap = {
     noiseFloor: 0.05,
     tiltDbPerOct: 1.5,
     labels: true,
+    roll: false,
+    gate: 0.3,
   },
 };
 
@@ -100,7 +104,8 @@ export type FieldDef =
   | { kind: "choice"; key: string; label: string; options: number[] }
   | { kind: "toggle"; key: string; label: string };
 
-export const SETTINGS_FIELDS: Record<SceneId, FieldDef[]> = {
+export const SETTINGS_FIELDS: Record<StageMode, FieldDef[]> = {
+  art: [{ kind: "toggle", key: "breathe", label: "breathe" }],
   bars: [
     { kind: "choice", key: "barCount", label: "bars", options: [32, 48, 64, 96] },
     { kind: "range", key: "gravity", label: "gravity", min: 2, max: 20, step: 0.5 },
@@ -123,13 +128,10 @@ export const SETTINGS_FIELDS: Record<SceneId, FieldDef[]> = {
     { kind: "range", key: "historySec", label: "history", min: 1.5, max: 8, step: 0.5 },
     { kind: "range", key: "lineWeight", label: "line", min: 1, max: 3, step: 0.2 },
   ],
-  waterfall: [
-    { kind: "range", key: "scrollSec", label: "scroll", min: 6, max: 30, step: 1 },
-    { kind: "range", key: "intensity", label: "intensity", min: 0.5, max: 1.5, step: 0.05 },
-    { kind: "range", key: "hueSpread", label: "hue drift", min: -120, max: 120, step: 10 },
-  ],
   piano: [
     { kind: "choice", key: "keys", label: "keys", options: [49, 61, 72, 88] },
+    { kind: "toggle", key: "roll", label: "roll" },
+    { kind: "range", key: "gate", label: "gate", min: 0.05, max: 0.6, step: 0.05 },
     { kind: "range", key: "gravity", label: "release", min: 4, max: 28, step: 1 },
     { kind: "range", key: "glow", label: "glow", min: 0, max: 1, step: 0.05 },
     { kind: "range", key: "tiltDbPerOct", label: "tilt", min: 0, max: 6, step: 0.5 },
@@ -144,7 +146,11 @@ export interface Preset {
   values: Record<string, number | boolean>;
 }
 
-export const PRESETS: Record<SceneId, Preset[]> = {
+export const PRESETS: Record<StageMode, Preset[]> = {
+  art: [
+    { id: "drift", label: "drift", values: {} },
+    { id: "still", label: "still", values: { breathe: false } },
+  ],
   bars: [
     { id: "classic", label: "classic", values: {} },
     {
@@ -181,16 +187,10 @@ export const PRESETS: Record<SceneId, Preset[]> = {
     { id: "dense", label: "dense", values: { rows: 52, historySec: 4.5, lineWeight: 1.2 } },
     { id: "sparse", label: "sparse", values: { rows: 20, historySec: 2.5, lineWeight: 2.2 } },
   ],
-  waterfall: [
-    { id: "aurora", label: "aurora", values: {} },
-    { id: "mono", label: "mono", values: { hueSpread: 0 } },
-    { id: "prism", label: "prism", values: { hueSpread: 110, intensity: 1.15 } },
-    { id: "slow", label: "slow", values: { scrollSec: 26 } },
-  ],
   piano: [
     { id: "grand", label: "grand", values: {} },
-    { id: "crisp", label: "crisp", values: { gravity: 22, glow: 0.35 } },
-    { id: "cascade", label: "cascade", values: { gravity: 8, glow: 1 } },
+    { id: "roll", label: "roll", values: { roll: true } },
+    { id: "crisp", label: "crisp", values: { gravity: 22, glow: 0.4 } },
     {
       id: "minimal",
       label: "minimal",
@@ -207,12 +207,12 @@ export interface SceneSelection {
 
 export interface SceneSettingsPayload {
   v: 1;
-  scenes: Partial<Record<SceneId, SceneSelection>>;
+  scenes: Partial<Record<StageMode, SceneSelection>>;
 }
 
 export const EMPTY_SETTINGS: SceneSettingsPayload = { v: 1, scenes: {} };
 
-const SCENE_IDS: SceneId[] = ["bars", "scope", "ridge", "waterfall", "piano"];
+const MODE_IDS: StageMode[] = ["art", "bars", "scope", "ridge", "piano"];
 
 export function isSceneSettingsPayload(
   v: unknown,
@@ -222,7 +222,7 @@ export function isSceneSettingsPayload(
   if (p.v !== 1) return false;
   if (typeof p.scenes !== "object" || p.scenes === null) return false;
   for (const [key, sel] of Object.entries(p.scenes)) {
-    if (!SCENE_IDS.includes(key as SceneId)) return false;
+    if (!MODE_IDS.includes(key as StageMode)) return false;
     if (typeof sel !== "object" || sel === null) return false;
     const s = sel as Record<string, unknown>;
     if (typeof s.preset !== "string") return false;
@@ -252,7 +252,7 @@ function clampField(field: FieldDef, value: number | boolean): number | boolean 
  * Effective settings for a scene: defaults ⊕ preset values ⊕ overrides,
  * every field clamped to its declared range. Unknown keys are dropped.
  */
-export function resolveSceneSettings<K extends SceneId>(
+export function resolveSceneSettings<K extends StageMode>(
   scene: K,
   payload: SceneSettingsPayload | null,
 ): SceneSettingsMap[K] {
@@ -286,8 +286,8 @@ export interface ResolvedDsp {
  * DSP config for the active scene. The spectrum scene exposes its DSP
  * knobs directly; the piano scene derives a semitone-aligned band (one
  * bar per key, monstercat off so notes don't bleed into neighbors);
- * every other scene runs the defaults so bars-driven scenes (ridgeline,
- * waterfall) stay on the house-tuned pipeline.
+ * every other scene runs the defaults so bars-driven scenes (ridgeline)
+ * stay on the house-tuned pipeline.
  */
 export function resolveDsp(
   scene: SceneId,
@@ -324,7 +324,7 @@ export function resolveDsp(
 /** Immutable update helper for the panel: set a scene's preset. */
 export function withPreset(
   payload: SceneSettingsPayload | null,
-  scene: SceneId,
+  scene: StageMode,
   preset: string,
 ): SceneSettingsPayload {
   const base = payload ?? EMPTY_SETTINGS;
@@ -338,7 +338,7 @@ export function withPreset(
 /** Immutable update helper for the panel: set one advanced override. */
 export function withOverride(
   payload: SceneSettingsPayload | null,
-  scene: SceneId,
+  scene: StageMode,
   key: string,
   value: number | boolean,
 ): SceneSettingsPayload {
@@ -356,7 +356,7 @@ export function withOverride(
 /** Immutable update helper for the panel: back to factory settings. */
 export function withReset(
   payload: SceneSettingsPayload | null,
-  scene: SceneId,
+  scene: StageMode,
 ): SceneSettingsPayload {
   const base = payload ?? EMPTY_SETTINGS;
   const scenes = { ...base.scenes };

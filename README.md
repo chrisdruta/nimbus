@@ -48,9 +48,10 @@ always credit and link back to their creator and SoundCloud.
   who join can queue tracks from their own library (credited by name),
   remove and reorder what's coming, and skip for the whole room. The host's
   player stays the clock; edits and skips propagate within seconds.
-- **The stage**: six fullscreen modes — _art_, _spectrum_, _ridgeline_,
-  _waterfall_, _scope_, _piano_ (a keyboard lit key-per-semitone from the
-  FFT) — switchable with ←/→ or 1–6, tinted from the track
+- **The stage**: five fullscreen modes — _art_, _spectrum_, _ridgeline_,
+  _scope_, _piano_ (a keyboard lit key-per-semitone from the FFT, with a
+  tempo-synced sequencer roll) — switchable with ←/→ or 1–5, tinted from
+  the track
   artwork, beat-reactive via onset detection, with per-scene presets and
   tuning, a true full-screen toggle, and whole-track waveform lookahead.
   All bars run through a TypeScript port of

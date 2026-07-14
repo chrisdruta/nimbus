@@ -31,6 +31,11 @@ export function createPianoScene(): Scene {
   let beamKey = "";
   let beatGlow = 0;
   let prevPhase: number | null = null;
+  // Sequencer roll: note history lives in an offscreen canvas that
+  // scrolls upward (waterfall's self-drawImage idiom, turned vertical).
+  let roll: HTMLCanvasElement | null = null;
+  let rollG: CanvasRenderingContext2D | null = null;
+  let rollShift = 0;
 
   return {
     id: "piano",
@@ -39,9 +44,13 @@ export function createPianoScene(): Scene {
       prevPhase = null;
       beam = null;
       beamKey = "";
+      roll = null;
+      rollG = null;
+      rollShift = 0;
     },
     resize() {
       beam = null; // anchored in canvas coords; rebuild lazily in frame()
+      roll = null; // sized to the roll region; rebuilt (history dropped)
     },
     frame(sc: SceneContext, f: AudioFrame, theme: VizTheme) {
       const { g, width, height, dpr } = sc;
@@ -68,11 +77,98 @@ export function createPianoScene(): Scene {
 
       g.clearRect(0, 0, width, height);
 
+      // Album art anchors the space above the keybed — oversized but
+      // dimmed well into the background, so the roll/beams painting over
+      // it read as the foreground.
+      if (theme.artwork) {
+        const size = Math.min(kbTop * 0.78, width * 0.42);
+        const ax = (width - size) / 2;
+        const ay = (kbTop - size) / 2 - kbTop * 0.02;
+        const artR = 16 * dpr;
+        g.save();
+        g.beginPath();
+        g.roundRect(ax, ay, size, size, artR);
+        g.clip();
+        g.globalAlpha = 0.45;
+        g.drawImage(theme.artwork, ax, ay, size, size);
+        g.restore();
+        g.globalAlpha = 1;
+        g.strokeStyle = "rgba(255, 255, 255, 0.05)";
+        g.lineWidth = dpr;
+        g.beginPath();
+        g.roundRect(ax, ay, size, size, artR);
+        g.stroke();
+      }
+
+      // Onset pulse feeds both the roll's beat lines and the felt strip.
+      const pulse = beatPulse(f, prevPhase);
+      prevPhase = pulse.phase;
+
+      const rollOn = s.roll && !theme.reducedMotion;
+      const rollH = Math.floor(kbTop - 4 * dpr);
+
+      if (rollOn && rollH > 40) {
+        // Sequencer roll: each frame the history scrolls up by dy device
+        // pixels and the current key lights stamp the vacated bottom
+        // strip — sustained notes extrude into bars, MIDI-roll style.
+        if (!roll || roll.width !== width || roll.height !== rollH) {
+          roll = document.createElement("canvas");
+          roll.width = width;
+          roll.height = rollH;
+          rollG = roll.getContext("2d");
+          rollShift = 0;
+        }
+        const rg = rollG;
+        if (rg) {
+          // Scroll speed follows the tempo grid when it's confident —
+          // the visible window is ~8 beats — else a steady 7 seconds.
+          const bps =
+            f.tempo && f.tempo.confidence > 0.3 ? f.tempo.bpm / 60 : null;
+          const historySec = bps ? Math.min(12, Math.max(4, 8 / bps)) : 7;
+          rollShift += (rollH / historySec) * f.dt;
+          const dy = Math.floor(rollShift);
+          if (dy > 0) {
+            rollShift -= dy;
+            rg.globalCompositeOperation = "copy";
+            rg.drawImage(roll, 0, -dy);
+            rg.globalCompositeOperation = "destination-out";
+            // Per-step fade sized so notes dissolve to ~7% by the top.
+            rg.fillStyle = `rgba(0, 0, 0, ${Math.min(0.3, (2.6 * dy) / rollH)})`;
+            rg.fillRect(0, 0, width, rollH);
+            rg.globalCompositeOperation = "source-over";
+            if (pulse.fire) {
+              rg.fillStyle = "rgba(255, 255, 255, 0.05)";
+              rg.fillRect(0, rollH - dy, width, Math.max(1, Math.round(dpr)));
+            }
+            // Stamp only clear notes — the low-level shimmer stays on the
+            // live keys but would silt the history into a wall. The gate
+            // knob trades sparseness for density (ambient vs full mixes).
+            for (let i = 0; i < n; i++) {
+              const lv = keyLight(lit[i]);
+              if (lv <= s.gate) continue;
+              const nv = Math.pow((lv - s.gate) / (1 - s.gate), 1.2);
+              const k = layout.keys[i];
+              const inset = whiteW * 0.08;
+              const hot = Math.max(0, (nv - 0.55) / 0.45);
+              const lr = Math.round(r + (255 - r) * hot);
+              const lg = Math.round(gr + (255 - gr) * hot);
+              const lb = Math.round(b + (255 - b) * hot);
+              rg.fillStyle = `rgba(${lr}, ${lg}, ${lb}, ${(0.25 + 0.75 * nv) * (0.3 + 0.7 * s.glow)})`;
+              // Crisp integer columns — fractional x smears the roll.
+              const x0 = Math.round(k.x * whiteW + inset);
+              const x1 = Math.round((k.x + k.w) * whiteW - inset);
+              rg.fillRect(x0, rollH - dy, x1 - x0, dy);
+            }
+          }
+          g.drawImage(roll, 0, 0);
+        }
+      }
+
       // Light beams above the keybed: a unit-height gradient (bright at
       // the base, transparent at 1) scaled per beam, so every beam fades
       // to nothing exactly at its own tip instead of cutting off flat.
       const beamMax = kbTop - height * 0.06;
-      if (s.glow > 0.01 && beamMax > 8 * dpr) {
+      if (!rollOn && s.glow > 0.01 && beamMax > 8 * dpr) {
         if (!beam || beamKey !== theme.accent) {
           beam = g.createLinearGradient(0, 0, 0, -1);
           beam.addColorStop(0, `rgba(${r}, ${gr}, ${b}, 0.6)`);
@@ -97,8 +193,6 @@ export function createPianoScene(): Scene {
       }
 
       // Felt strip along the keybed top; blooms on the beat.
-      const pulse = beatPulse(f, prevPhase);
-      prevPhase = pulse.phase;
       if (pulse.fire) beatGlow = Math.min(1, beatGlow + 0.6 * pulse.intensity);
       beatGlow *= Math.exp(-f.dt / 0.18);
       g.fillStyle = `rgba(${r}, ${gr}, ${b}, ${0.4 + 0.5 * beatGlow})`;
@@ -162,6 +256,8 @@ export function createPianoScene(): Scene {
     dispose() {
       layout = null;
       beam = null;
+      roll = null;
+      rollG = null;
     },
   };
 }
