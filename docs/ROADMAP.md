@@ -70,6 +70,63 @@ plain-web also keeps a future Cast receiver a plain page.
 
 ## Shipped
 
+### Piano polish + art-mode tune (2026-07-14)
+
+Follow-ups: piano's backdrop artwork enlarged (~0.78 of the roll
+region) and dimmed to 45% alpha so the lights clearly read as the
+foreground; sidebar navigation now always closes the stage — StageView
+watches the pathname for route changes, and AppShell's sidebar catches
+link clicks to the page you're already on.
+
+Piano defaults to beams ("roll" is now a preset/toggle away), the roll
+note-gate is a tune knob (`gate`, 0.05–0.6 — soften for sparse genres,
+raise for dense mixes), and the album art now anchors the space above
+the keybed (centered, rounded, 85% alpha) with the beams/roll painting
+over it. The settings registry widened from SceneId to StageMode so the
+art mode has a tune too — drift/still presets around a "breathe" toggle
+for the artwork swell. Registry-coherence tests now iterate STAGE_META,
+so every mode must declare fields and presets.
+
+### Piano roll + tune popover; waterfall retired (2026-07-14)
+
+The waterfall scene is gone as a standalone mode — its idea lives on
+inside piano as a sequencer roll (default on, "roll" tune toggle): key
+lights stamp an offscreen canvas that scrolls upward (waterfall's
+self-drawImage idiom turned vertical), so sustained notes extrude into
+MIDI-style bars. Scroll speed follows the tempo grid when confident
+(~8 beats visible, 4–12s clamp; steady 7s fallback) and confident beats
+stamp faint grid lines. Only clear notes (post-noteContrast level > 0.3)
+enter the history — the low shimmer stays on the live keys — with
+integer-pixel columns and a fade that dissolves notes by the top. The
+"beams" preset (roll off) keeps the original look. Tuning also moved
+from the right-edge drawer to a compact popover anchored above the
+"tune" button — controls appear where the cursor already is. Stage is
+back to five modes (hotkeys 1–5); `lib/viz/colormap.ts` retired with
+the scene; stale `stageMode: "waterfall"` prefs fall through to the
+default via the existing validation.
+
+Validation: typecheck + `bun test` (stage test now rejects "waterfall";
+settings tests re-pointed at ridge); playwright-cli against live
+playback — roll density/fade/beat lines, beams preset flip, popover
+reachability, keyboard switching.
+
+### Stage chrome redesign (2026-07-14)
+
+Replaced the bottom-center pill cluster: mode switching is now a
+bottom-left corner text stack (idle shows just the active mode's
+lowercase name with an accent tick; hover/focus/tap unfolds the full
+list plus the shortcut hint), tuning is a right-edge drawer with all
+knobs always visible (no "advanced" disclosure), fullscreen pairs with
+close top-right, and "tune" sits as quiet text bottom-right. Scene
+switches flash the new name center-low (motion-safe only); chrome fades
+in fast and out slow with a slight drift. Esc peels layers: drawer →
+browser fullscreen → stage. Chrome-only — `lib/stage.ts`, scenes, and
+settings resolution untouched.
+
+Validation: typecheck + `bun test` green (no UI tests by convention);
+playwright-cli pass over corner stack idle/expand/select, keyboard
+switching + flash, drawer live-tuning, esc order, and pref persistence.
+
 ### Milestone 14 — piano scene (2026-07-14)
 
 Fifth viz scene: a 49/61/72/88-key keyboard lit from the FFT. The trick
