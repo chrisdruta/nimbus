@@ -18,6 +18,11 @@ describe("sourceKindOf", () => {
   test("shared-session queue maps to the shared kind", () => {
     expect(sourceKindOf("shared")).toBe("shared");
   });
+
+  test("search and artist sourceIds map to their kinds", () => {
+    expect(sourceKindOf("search:boards%20of%20canada")).toBe("search");
+    expect(sourceKindOf("artist:184623")).toBe("artist");
+  });
 });
 
 describe("capsOf", () => {
@@ -71,6 +76,12 @@ describe("capsOf", () => {
     });
   });
 
+  test("windowed discovery sources behave like the feed", () => {
+    for (const kind of ["search", "artist"] as const) {
+      expect(capsOf(kind)).toEqual(capsOf("feed"));
+    }
+  });
+
   test("every kind has a caps row", () => {
     expect(Object.keys(CAPS).sort()).toEqual(
       [
@@ -81,6 +92,8 @@ describe("capsOf", () => {
         "slipstream-shared",
         "feed",
         "shared",
+        "search",
+        "artist",
       ].sort(),
     );
   });

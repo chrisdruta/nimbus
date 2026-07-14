@@ -80,6 +80,17 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           Your library
         </p>
         <Link
+          href="/search"
+          onClick={onNavigate}
+          className={`-mx-2 block rounded px-2 py-1.5 text-sm transition ${
+            pathname === "/search"
+              ? "border-l-2 border-accent bg-white/5 text-white"
+              : "text-muted hover:text-white"
+          }`}
+        >
+          search
+        </Link>
+        <Link
           href="/library"
           onClick={onNavigate}
           className={`-mx-2 block rounded px-2 py-1.5 text-sm transition ${

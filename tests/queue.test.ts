@@ -304,6 +304,32 @@ describe("persistence", () => {
     expect(loaded?.state.shuffleMode).toBe("classic");
   });
 
+  test("legacy snapshots without artistId stay valid; junk artistId drops the track", () => {
+    const q = createQueue("radio:track:10", [10, 11], { startTrackId: 10 });
+    const legacy = {
+      id: 10,
+      title: "t",
+      artist: "a",
+      artistUrl: "",
+      artworkUrl: null,
+      permalinkUrl: "",
+      durationMs: 1000,
+    };
+    const junk = { ...legacy, id: 11, artistId: "nope" };
+    store.set(
+      `nimbus.queue.v1:${USER_ID}`,
+      JSON.stringify({
+        state: q,
+        currentTrack: legacy,
+        tracks: [legacy, junk],
+        savedAt: 1,
+      }),
+    );
+    const loaded = loadQueue(USER_ID);
+    expect(loaded?.currentTrack).toEqual(legacy);
+    expect(loaded?.tracks).toEqual([legacy]);
+  });
+
   test("round-trips the optional metadata snapshot", () => {
     const q = createQueue("radio:track:10", IDS, { startTrackId: 10 });
     const track = (id: number) => ({

@@ -15,7 +15,9 @@ export type SourceKind =
   | "slipstream-shared"
   | "radio"
   | "feed"
-  | "shared";
+  | "shared"
+  | "search"
+  | "artist";
 
 export interface SourceCapabilities {
   /** next/prev */
@@ -108,16 +110,40 @@ export const CAPS: Record<SourceKind, SourceCapabilities> = {
     persists: true,
     restoresFromLibrary: false,
   },
+  // Search results and artist catalogs: windowed lists like the feed — the
+  // queue only ever holds tracks the user actually loaded, so both behave
+  // like normal finite collections. Snapshot-persisted (no library walk).
+  search: {
+    canSkip: true,
+    canJump: true,
+    canShuffle: true,
+    canRepeat: true,
+    canSeek: true,
+    persists: true,
+    restoresFromLibrary: false,
+  },
+  artist: {
+    canSkip: true,
+    canJump: true,
+    canShuffle: true,
+    canRepeat: true,
+    canSeek: true,
+    persists: true,
+    restoresFromLibrary: false,
+  },
 };
 
 /** Parse a QueueState.sourceId
- * ("likes" | "playlist:2" | "radio:track:9" | "feed"). */
+ * ("likes" | "playlist:2" | "radio:track:9" | "feed" | "search:q" |
+ * "artist:7"). */
 export function sourceKindOf(sourceId: string): SourceKind {
   if (sourceId === "likes") return "likes";
   if (sourceId === "feed") return "feed";
   if (sourceId === "shared") return "shared";
   if (sourceId.startsWith("playlist:")) return "playlist";
   if (sourceId.startsWith("radio:")) return "radio";
+  if (sourceId.startsWith("search:")) return "search";
+  if (sourceId.startsWith("artist:")) return "artist";
   return "likes"; // unknown ids behave like the default local source
 }
 

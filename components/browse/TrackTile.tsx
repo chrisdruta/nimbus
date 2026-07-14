@@ -1,6 +1,7 @@
 "use client";
 
 import { memo } from "react";
+import Link from "next/link";
 import { artworkSized } from "@/lib/artwork";
 import { IconCloud, IconPlay, IconPlus, IconRadio } from "@/components/ui/icons";
 import { Equalizer } from "./Equalizer";
@@ -65,13 +66,26 @@ export const TrackTile = memo(function TrackTile({
         </div>
       )}
 
-      {/* signature stacked chips */}
-      <span className="absolute top-2 left-2 flex max-w-[88%] flex-col items-start gap-1">
+      {/* signature stacked chips; z-10 keeps the artist link clickable
+          above the hover play overlay */}
+      <span className="absolute top-2 left-2 z-10 flex max-w-[88%] flex-col items-start gap-1">
         <span className="line-clamp-2 max-w-full bg-black/75 px-1.5 py-0.5 text-xs font-semibold backdrop-blur-sm">
           {track.title}
         </span>
         <span className="truncate max-w-full bg-black/75 px-1.5 py-0.5 text-xs text-muted backdrop-blur-sm">
-          {track.streamable ? track.artist : "unavailable"}
+          {!track.streamable ? (
+            "unavailable"
+          ) : track.artistId ? (
+            <Link
+              href={`/artists/${track.artistId}`}
+              onClick={(e) => e.stopPropagation()}
+              className="hover:text-white hover:underline"
+            >
+              {track.artist}
+            </Link>
+          ) : (
+            track.artist
+          )}
         </span>
         {reposted && (
           <span className="bg-black/75 px-1.5 py-0.5 text-[10px] text-muted backdrop-blur-sm">

@@ -273,6 +273,7 @@ function toQueueTrack(t: ProviderTrack): QueueTrack {
     id: t.id,
     title: t.title,
     artist: t.artist,
+    ...(t.artistId === undefined ? {} : { artistId: t.artistId }),
     artistUrl: t.artistUrl,
     artworkUrl: t.artworkUrl,
     permalinkUrl: t.permalinkUrl,
@@ -286,6 +287,7 @@ function entryToTrack(e: SharedQueueEntry): QueueTrack {
     id: e.id,
     title: e.title,
     artist: e.artist,
+    ...(e.artistId === undefined ? {} : { artistId: e.artistId }),
     artistUrl: e.artistUrl,
     artworkUrl: e.artworkUrl,
     permalinkUrl: e.permalinkUrl,
@@ -1734,6 +1736,9 @@ export function PlayerProvider({
           id: track.id,
           title: track.title,
           artist: track.artist,
+          ...(track.artistId === undefined
+            ? {}
+            : { artistId: track.artistId }),
           artistUrl: track.artistUrl,
           artworkUrl: track.artworkUrl,
           permalinkUrl: track.permalinkUrl,

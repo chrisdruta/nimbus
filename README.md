@@ -34,6 +34,12 @@ always credit and link back to their creator and SoundCloud.
   whatever played last.
 - **Feed**: recent uploads and reposts from the people you follow, straight
   into the same tiles, queue, and radio affordances.
+- **Search**: debounced full-catalog search for tracks and artists, with
+  the query in the URL so results survive navigation. Results play through
+  the same queue and quota path as everything else.
+- **Artist pages**: every artist name links to an in-app profile — avatar,
+  follower/track counts, follow/unfollow, and their full catalog with
+  play/shuffle (each page links back to the artist on SoundCloud).
 - **Slipstream**: a live "listening now" feed of what members are playing;
   join someone's slipstream to hear what they hear, position-synced and
   read-only. Your own queue parks untouched and every listener streams

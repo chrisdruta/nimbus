@@ -39,15 +39,9 @@ project 30 days) trends toward its cap in the dashboard.
   the extra API calls; revisit if the plain "↻ repost" chip feels flat.
 - **Recently played** — views on top of `track_plays`
   (`ORDER BY last_played_at DESC` is already indexed).
-- **Search + artist pages** — `GET /search/tracks` (also
-  `/search/users`, `/search/playlists`) with `linked_partitioning`
-  paging behind a `MusicProvider.search()` seam method plus a debounced
-  search view; artist pages are `GET /users/{urn}` +
-  `/users/{urn}/tracks` behind `getUser()`/`getUserTracks()` and an
-  `/artists/[id]` route, with every artist name in the UI linking there.
-  Search results and artist tracks feed the existing queue/play path, so
-  quota and token-broker constraints hold unchanged. Verify endpoint
-  shapes against the OpenAPI explorer when building.
+- **Playlist search** — third search tab via `GET /playlists?q=`; needs a
+  foreign-playlist detail path (the current `/playlists/[id]` page only
+  resolves titles for your own playlists). Deferred from M13.
 - **Tauri client** — native shell on this same backend.
 - **Cast to TV (Google Cast)** — play the stage + viz on a television.
   Shape: a Custom Web Receiver (a small self-hosted page — can be a route
@@ -75,6 +69,45 @@ OffscreenCanvas worker → WebGL/WebGPU → only then WASM+SIMD. Staying
 plain-web also keeps a future Cast receiver a plain page.
 
 ## Shipped
+
+### Milestone 13 — search + artist pages (2026-07-14)
+
+Debounced catalog search (tracks + artists tabs) at `/search`, and
+`/artists/[id]` pages with avatar, follower/track counts, city/country,
+follow/unfollow, and the artist's windowed catalog. Every artist name in
+the UI links to the artist page (browse tiles/rows, media bar, stage —
+side-panel queue rows excepted: they're real `<button>`s and links can't
+nest); tracks without a cached `artistId` fall back to the external
+SoundCloud profile link.
+
+**Endpoint correction**: search is `GET /tracks?q=` / `GET /users?q=` —
+the `/search/*` paths this file previously sketched don't exist in the
+public API. Artist pages use `GET /users/{id}` + `/users/{id}/tracks`,
+which accept plain numeric ids (verified live; no URN formatting
+needed). Track search passes `access=playable,preview` to keep blocked
+tracks out of results; artist catalogs show everything, greyed like the
+library.
+
+**Shape**: four seam methods (`searchTracks`, `searchArtists`,
+`getArtist` + `getArtistFollowed`, `getArtistTracks`) with the standard
+HMAC-bound cursors; routes `/api/search/{tracks,artists}` and
+`/api/artists/[id]{,/tracks}`; windowed-list plumbing generalizing the
+feed pattern (`lib/paged.ts`, `lib/hooks/usePagedList.ts` — register
+only, never syncSource); new `search`/`artist` source kinds with
+feed-like caps; `ProviderTrack.artistId` added optionally (all persisted
+snapshots/caches validate it as optional for backfill). Navigation stays
+minimal per the design line: a sidebar "search" entry, query/tab in the
+URL via shallow `history.replaceState`, and a "← back" chip on artist
+pages (`router.back()`, `/search` fallback) — no global nav chrome.
+
+Validation: 327 tests green (18 new: source kinds/caps, query
+normalization + sourceId encoding, page dedupe, count formatting,
+legacy-snapshot backfill for queue + library cache); typecheck clean;
+live pass — search → tabs → artist page → back chip restores query+tab
+from the URL, follow/unfollow round-trip against the live API,
+artist-name links from library tiles (needed a z-order fix over the
+hover play overlay), and one artist-page play started and paused through
+the normal quota path.
 
 ### Milestone 12.1 — AFK guard (2026-07-14)
 

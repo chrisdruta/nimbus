@@ -51,6 +51,15 @@ describe("validateCachedLibrary", () => {
     expect(validateCachedLibrary(record())).toBe(true);
   });
 
+  test("artistId is optional (legacy caches) but must be a number", () => {
+    const withId = { ...track(1), artistId: 42 };
+    expect(validateCachedLibrary(record({ tracks: [withId] }))).toBe(true);
+    // The default track() helper has no artistId — legacy shape.
+    expect(validateCachedLibrary(record())).toBe(true);
+    const junk = { ...track(1), artistId: "42" as unknown as number };
+    expect(validateCachedLibrary(record({ tracks: [junk] }))).toBe(false);
+  });
+
   test("rejects wrong version, missing fields, and junk", () => {
     expect(validateCachedLibrary(null)).toBe(false);
     expect(validateCachedLibrary("nope")).toBe(false);

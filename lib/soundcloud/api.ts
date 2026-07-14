@@ -3,6 +3,7 @@ import {
   InvalidCursorError,
   ProviderAuthError,
   TrackUnavailableError,
+  type ProviderArtist,
   type ProviderFeedItem,
   type ProviderPage,
   type ProviderPlaylist,
@@ -259,6 +260,10 @@ interface ScUser {
   username: string;
   permalink_url: string;
   avatar_url?: string | null;
+  city?: string | null;
+  country?: string | null;
+  followers_count?: number | null;
+  track_count?: number | null;
 }
 
 interface ScTrack {
@@ -290,10 +295,17 @@ interface ScPartitioned<T> {
 }
 
 function toTrack(t: ScTrack): ProviderTrack {
+  const artistId =
+    typeof t.user?.id === "number" &&
+    Number.isSafeInteger(t.user.id) &&
+    t.user.id > 0
+      ? t.user.id
+      : undefined;
   return {
     id: t.id,
     title: t.title,
     artist: t.user?.username ?? "unknown",
+    ...(artistId === undefined ? {} : { artistId }),
     artistUrl: webUrl(t.user?.permalink_url),
     artworkUrl: artworkUrl(t.artwork_url),
     permalinkUrl: webUrl(t.permalink_url),
@@ -310,6 +322,23 @@ function toPlaylist(p: ScPlaylist): ProviderPlaylist {
     artworkUrl: artworkUrl(p.artwork_url),
     permalinkUrl: webUrl(p.permalink_url),
     durationMs: p.duration,
+  };
+}
+
+function toArtist(u: ScUser): ProviderArtist {
+  const count = (n: number | null | undefined) =>
+    typeof n === "number" && Number.isFinite(n) && n >= 0 ? n : null;
+  const text = (s: string | null | undefined) =>
+    typeof s === "string" && s.trim() !== "" ? s : null;
+  return {
+    id: u.id,
+    username: u.username,
+    permalinkUrl: webUrl(u.permalink_url),
+    avatarUrl: artworkUrl(u.avatar_url),
+    city: text(u.city),
+    country: text(u.country),
+    followersCount: count(u.followers_count),
+    trackCount: count(u.track_count),
   };
 }
 
@@ -420,6 +449,77 @@ export async function getFeedPage(
     items: page.items.filter((i): i is ProviderFeedItem => i !== null),
     nextCursor: page.nextCursor,
   };
+}
+
+/** Full-catalog search (`GET /tracks?q=`). `access=playable,preview` keeps
+ * region-blocked results out — a search full of grey rows helps nobody. */
+export async function searchTracks(
+  accessToken: string,
+  query: string,
+  cursor?: string,
+): Promise<ProviderPage<ProviderTrack>> {
+  const path = "/tracks";
+  const url = cursor
+    ? decodeCursor(cursor, path)
+    : `${path}?q=${encodeURIComponent(query)}` +
+      `&access=playable,preview&limit=50&linked_partitioning=true`;
+  const data = (await scFetch(url, accessToken)) as
+    ScPartitioned<ScTrack> | ScTrack[];
+  return toPage(data, toTrack, path);
+}
+
+export async function searchArtists(
+  accessToken: string,
+  query: string,
+  cursor?: string,
+): Promise<ProviderPage<ProviderArtist>> {
+  const path = "/users";
+  const url = cursor
+    ? decodeCursor(cursor, path)
+    : `${path}?q=${encodeURIComponent(query)}&limit=50&linked_partitioning=true`;
+  const data = (await scFetch(url, accessToken)) as
+    ScPartitioned<ScUser> | ScUser[];
+  return toPage(data, toArtist, path);
+}
+
+export async function getArtist(
+  accessToken: string,
+  artistId: number,
+): Promise<ProviderArtist> {
+  try {
+    const user = (await scFetch(`/users/${artistId}`, accessToken)) as ScUser;
+    return toArtist(user);
+  } catch (err) {
+    if (err instanceof ProviderAuthError) throw err;
+    // Deleted/unknown artists 4xx here — a per-resource condition, same
+    // vocabulary as track lookups.
+    throw new TrackUnavailableError(`artist lookup failed: ${err}`);
+  }
+}
+
+/** No `access` filter: an artist page shows the whole catalog and greys
+ * out unplayable tracks, matching library behavior. */
+export async function getArtistTracks(
+  accessToken: string,
+  artistId: number,
+  cursor?: string,
+): Promise<ProviderPage<ProviderTrack>> {
+  const path = `/users/${artistId}/tracks`;
+  const url = cursor
+    ? decodeCursor(cursor, path)
+    : `${path}?limit=50&linked_partitioning=true`;
+  const data = (await scFetch(url, accessToken)) as
+    ScPartitioned<ScTrack> | ScTrack[];
+  return toPage(data, toTrack, path);
+}
+
+/** GET /me/followings/{id}: 200 when followed, 404 when not. */
+export async function getArtistFollowed(
+  accessToken: string,
+  artistId: number,
+): Promise<boolean> {
+  const status = await scSend(`/me/followings/${artistId}`, accessToken, "GET");
+  return status >= 200 && status < 300;
 }
 
 /** The .json sibling of the waveform PNG: samples on a 0..height scale. */
@@ -580,16 +680,10 @@ export async function getTrackSocial(
   if (!artistId) {
     throw new TrackUnavailableError(`track ${trackId} has no artist`);
   }
-  // GET /me/followings/{id}: 200 when followed, 404 when not.
-  const status = await scSend(
-    `/me/followings/${artistId}`,
-    accessToken,
-    "GET",
-  );
   return {
     liked: track.user_favorite === true,
     artistId,
-    artistFollowed: status >= 200 && status < 300,
+    artistFollowed: await getArtistFollowed(accessToken, artistId),
   };
 }
 

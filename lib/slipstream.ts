@@ -225,6 +225,10 @@ function isWindowEntry(v: unknown): v is QueueTrack {
     t.title.length <= MAX_STRING &&
     typeof t.artist === "string" &&
     t.artist.length <= MAX_STRING &&
+    (t.artistId === undefined ||
+      (typeof t.artistId === "number" &&
+        Number.isSafeInteger(t.artistId) &&
+        t.artistId > 0)) &&
     isSoundCloudUrl(t.artistUrl) &&
     isArtworkUrl(t.artworkUrl) &&
     isSoundCloudUrl(t.permalinkUrl) &&
@@ -251,6 +255,7 @@ export function parseQueueTracks(
     id: t.id,
     title: t.title,
     artist: t.artist,
+    ...(typeof t.artistId === "number" ? { artistId: t.artistId } : {}),
     artistUrl: t.artistUrl,
     artworkUrl: t.artworkUrl,
     permalinkUrl: t.permalinkUrl,

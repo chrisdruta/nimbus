@@ -41,6 +41,8 @@ function isTrack(t: unknown): t is ProviderTrack {
     typeof o.id === "number" &&
     typeof o.title === "string" &&
     typeof o.artist === "string" &&
+    // Optional: records cached before the field existed stay valid.
+    (o.artistId === undefined || typeof o.artistId === "number") &&
     typeof o.artistUrl === "string" &&
     (o.artworkUrl === null || typeof o.artworkUrl === "string") &&
     typeof o.permalinkUrl === "string" &&

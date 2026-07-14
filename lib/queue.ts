@@ -28,6 +28,8 @@ export interface QueueTrack {
   id: number;
   title: string;
   artist: string;
+  /** Absent on snapshots persisted before the field existed. */
+  artistId?: number;
   artistUrl: string;
   artworkUrl: string | null;
   permalinkUrl: string;
@@ -474,6 +476,8 @@ function isQueueTrack(t: unknown): t is QueueTrack {
     typeof x?.id === "number" &&
     typeof x.title === "string" &&
     typeof x.artist === "string" &&
+    // Optional: predates snapshots saved before the field existed.
+    (x.artistId === undefined || typeof x.artistId === "number") &&
     typeof x.artistUrl === "string" &&
     (x.artworkUrl === null || typeof x.artworkUrl === "string") &&
     typeof x.permalinkUrl === "string" &&

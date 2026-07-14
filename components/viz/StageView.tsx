@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { SceneHost } from "./SceneHost";
 import { ScenePicker } from "./ScenePicker";
 import { createScene } from "./scenes";
@@ -281,14 +282,26 @@ export function StageView() {
             {current.title}
           </a>
           <p className="mt-1 text-muted">
-            <a
-              href={current.artistUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="hover:text-white hover:underline"
-            >
-              {current.artist}
-            </a>{" "}
+            {current.artistId ? (
+              // Navigating happens under the overlay — close the stage so
+              // the artist page is actually visible.
+              <Link
+                href={`/artists/${current.artistId}`}
+                onClick={() => actions.closeStage()}
+                className="hover:text-white hover:underline"
+              >
+                {current.artist}
+              </Link>
+            ) : (
+              <a
+                href={current.artistUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="hover:text-white hover:underline"
+              >
+                {current.artist}
+              </a>
+            )}{" "}
             ·{" "}
             <a
               href={current.permalinkUrl}

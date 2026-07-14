@@ -1,6 +1,9 @@
 import type { MusicProvider } from "../provider";
 import { authorizeUrl, exchangeCode, refresh } from "./auth";
 import {
+  getArtist,
+  getArtistFollowed,
+  getArtistTracks,
   getFeedPage,
   getLikesPage,
   getMe,
@@ -10,6 +13,8 @@ import {
   getTrackSocial,
   getWaveform,
   resolveStream,
+  searchArtists,
+  searchTracks,
   setArtistFollowed,
   setTrackLiked,
 } from "./api";
@@ -24,6 +29,11 @@ export const soundcloudProvider: MusicProvider = {
   getPlaylistTracks,
   getRelatedTracks,
   getFeedPage,
+  searchTracks,
+  searchArtists,
+  getArtist,
+  getArtistTracks,
+  getArtistFollowed,
   resolveStream,
   getWaveform,
   getTrackSocial,

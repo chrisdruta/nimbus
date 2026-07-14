@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { artworkSized } from "@/lib/artwork";
 import {
   IconCloud,
@@ -20,8 +21,9 @@ interface Social {
   artistFollowed: boolean;
 }
 
-/** Current track info; the links double as the required SoundCloud
- * attribution (track -> permalink, artist -> creator profile). */
+/** Current track info; the permalink links double as the required
+ * SoundCloud attribution. The artist name prefers the in-app artist page
+ * (which links back to the creator's SoundCloud profile itself). */
 export function NowPlaying() {
   const { current, slipstream, stageOpen } = usePlayerState();
   const actions = usePlayerActions();
@@ -130,14 +132,23 @@ export function NowPlaying() {
           {current.title}
         </a>
         <div className="truncate text-xs text-muted">
-          <a
-            href={current.artistUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="hover:text-white hover:underline"
-          >
-            {current.artist}
-          </a>{" "}
+          {current.artistId ? (
+            <Link
+              href={`/artists/${current.artistId}`}
+              className="hover:text-white hover:underline"
+            >
+              {current.artist}
+            </Link>
+          ) : (
+            <a
+              href={current.artistUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="hover:text-white hover:underline"
+            >
+              {current.artist}
+            </a>
+          )}{" "}
           ·{" "}
           <a
             href={current.permalinkUrl}

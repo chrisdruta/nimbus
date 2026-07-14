@@ -19,12 +19,28 @@ export interface ProviderTrack {
   id: number;
   title: string;
   artist: string;
+  /** Provider id of the artist; absent on records persisted before it
+   * existed (backfilled as undefined — UI must degrade to artistUrl). */
+  artistId?: number;
   artistUrl: string;
   artworkUrl: string | null;
   permalinkUrl: string;
   durationMs: number;
   /** False when the provider marks the track non-streamable off-platform. */
   streamable: boolean;
+}
+
+/** An artist profile — the subject of search results and artist pages. */
+export interface ProviderArtist {
+  id: number;
+  username: string;
+  permalinkUrl: string;
+  avatarUrl: string | null;
+  city: string | null;
+  country: string | null;
+  /** Null when the provider omits the count on this response shape. */
+  followersCount: number | null;
+  trackCount: number | null;
 }
 
 export interface ProviderPlaylist {
@@ -98,6 +114,23 @@ export interface MusicProvider {
     accessToken: string,
     cursor?: string,
   ): Promise<ProviderPage<ProviderFeedItem>>;
+  searchTracks(
+    accessToken: string,
+    query: string,
+    cursor?: string,
+  ): Promise<ProviderPage<ProviderTrack>>;
+  searchArtists(
+    accessToken: string,
+    query: string,
+    cursor?: string,
+  ): Promise<ProviderPage<ProviderArtist>>;
+  getArtist(accessToken: string, artistId: number): Promise<ProviderArtist>;
+  getArtistTracks(
+    accessToken: string,
+    artistId: number,
+    cursor?: string,
+  ): Promise<ProviderPage<ProviderTrack>>;
+  getArtistFollowed(accessToken: string, artistId: number): Promise<boolean>;
   resolveStream(accessToken: string, trackId: number): Promise<ProviderStream>;
   /**
    * Whole-track amplitude samples (arbitrary integer scale), or null when

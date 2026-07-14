@@ -5,6 +5,7 @@
  */
 
 import {
+  ArrowLeft,
   AudioWaveform,
   ChevronDown,
   ChevronUp,
@@ -24,6 +25,7 @@ import {
   Radio,
   Repeat,
   Rows3,
+  Search,
   Share,
   Shuffle,
   SkipBack,
@@ -62,6 +64,12 @@ export const IconCloud = ({ size = 20, ...p }: IconProps) => (
 
 export const IconShuffle = ({ size = 20, ...p }: IconProps) => (
   <Shuffle size={size} {...p} />
+);
+export const IconSearch = ({ size = 20, ...p }: IconProps) => (
+  <Search size={size} {...p} />
+);
+export const IconArrowLeft = ({ size = 20, ...p }: IconProps) => (
+  <ArrowLeft size={size} {...p} />
 );
 export const IconRepeat = ({ size = 20, ...p }: IconProps) => (
   <Repeat size={size} {...p} />

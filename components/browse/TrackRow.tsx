@@ -1,6 +1,7 @@
 "use client";
 
 import { memo } from "react";
+import Link from "next/link";
 import { artworkSized } from "@/lib/artwork";
 import { formatDuration } from "@/lib/format";
 import { IconCloud, IconPlay, IconPlus, IconRadio } from "@/components/ui/icons";
@@ -81,7 +82,19 @@ export const TrackRow = memo(function TrackRow({
           {track.title}
         </span>
         <span className="block truncate text-xs text-muted">
-          {track.streamable ? track.artist : "unavailable"}
+          {!track.streamable ? (
+            "unavailable"
+          ) : track.artistId ? (
+            <Link
+              href={`/artists/${track.artistId}`}
+              onClick={(e) => e.stopPropagation()}
+              className="hover:text-white hover:underline"
+            >
+              {track.artist}
+            </Link>
+          ) : (
+            track.artist
+          )}
           {reposted && " · ↻ repost"}
         </span>
       </span>
