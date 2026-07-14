@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { artworkSized } from "@/lib/artwork";
+import { markInteraction } from "@/lib/hooks/interaction";
 import type { QueueTrack } from "@/lib/queue";
 
 interface MediaSessionOptions {
@@ -33,11 +34,18 @@ export function useMediaSession(opts: MediaSessionOptions) {
     }
     ms.playbackState = playing ? "playing" : "paused";
 
-    ms.setActionHandler("play", opts.onPlay);
-    ms.setActionHandler("pause", opts.onPause);
-    ms.setActionHandler("nexttrack", opts.onNext);
-    ms.setActionHandler("previoustrack", opts.onPrev);
+    // Hardware media keys arrive without page events — they're presence
+    // all the same (feeds the AFK guard's interaction clock).
+    const acting = (fn: () => void) => () => {
+      markInteraction();
+      fn();
+    };
+    ms.setActionHandler("play", acting(opts.onPlay));
+    ms.setActionHandler("pause", acting(opts.onPause));
+    ms.setActionHandler("nexttrack", acting(opts.onNext));
+    ms.setActionHandler("previoustrack", acting(opts.onPrev));
     ms.setActionHandler("seekto", (e) => {
+      markInteraction();
       const el = opts.audioEl();
       if (el && e.seekTime !== undefined) el.currentTime = e.seekTime;
     });

@@ -67,6 +67,35 @@ plain-web also keeps a future Cast receiver a plain page.
 
 ## Shipped
 
+### Milestone 12.1 — AFK guard (2026-07-14)
+
+Cost analysis of unattended clients: end-of-queue is already ~free (the
+publisher's `enabled` gate sends one final `playing:false` beat and goes
+quiet; the feed poll is `document.hidden`-gated), and playing-all-night
+self-limits via the daily play quota (~7½ h of 3-min tracks) — but until
+then burns the whole quota + ~4 beats/min, and **any client polling every
+15s keeps Neon compute from ever autosuspending** (suspend needs ~5 quiet
+minutes; a 24/7 visible tab ≈ 720 CU-h/month vs ~190 free). Fix, no new
+infra: an interaction clock (`lib/hooks/interaction.ts` — module-level
+pointer/key/wheel/touch listeners + `markInteraction()` from media-key
+handlers) feeding a pure policy (`lib/afk.ts`): after **3 h** of playback
+with no interaction the player silently pauses with a toast (heartbeats
+stop for free; a paused shared-session host goes presence-stale and the
+row revives on resume, same as reload); a **follower leaves** instead of
+pausing so its 5 s snapshot poll stops too; and the visible-tab feed poll
+skips ticks after **30 min** idle, resuming on the next tick after any
+interaction. Track auto-advance is not interaction.
+
+Validation: 309 tests green (6 new: threshold boundaries, paused/playing,
+follow→leave, clock skew, feed<pause invariant); typecheck clean; live
+pass with shortened constants (90s/30s/5s) — untouched playing tab
+auto-paused on schedule (twice, including after a resume), request
+stream ended with exactly the final `playing:false` beat then total
+silence over 20s, feed polls stopped at the idle gate and resumed ≤15s
+after one synthetic pointerdown. (Headless gotcha for posterity: POST
+fetches don't appear in `performance` resource timing in headless
+Chromium — instrument `window.fetch` instead.)
+
 ### Milestone 12 — shared slipstreams (2026-07-14)
 
 Slipstream grows collaborative control. A host explicitly **shares a

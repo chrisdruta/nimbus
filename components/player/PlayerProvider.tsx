@@ -77,6 +77,8 @@ import {
   type LevelerState,
 } from "@/lib/loudness";
 import { readPref, writePref } from "@/lib/prefs";
+import { AFK_CHECK_MS, afkAction } from "@/lib/afk";
+import { idleFor } from "@/lib/hooks/interaction";
 import { useMediaSession } from "@/lib/hooks/useMediaSession";
 import {
   useSlipstreamPublisher,
@@ -1796,6 +1798,30 @@ export function PlayerProvider({
     const meta = metaRef.current.get(id);
     if (meta) setCurrent(meta);
   }, [queue]);
+
+  // AFK guard: an unattended playing client eventually silences itself.
+  // Pausing stops the heartbeats for free (the publisher is gated on
+  // `playing`); a follower leaves instead so its 5s snapshot poll stops
+  // too. The daily play quota remains the hard backstop.
+  useEffect(() => {
+    if (!playing && !slipstream) return;
+    const iv = setInterval(() => {
+      const action = afkAction({
+        playing: playingRef.current,
+        following: followRef.current !== null,
+        idleForMs: idleFor(),
+      });
+      if (action === "pause") {
+        audioRef.current?.pause();
+        setPlaying(false);
+        toast("paused — looks like you stepped away");
+      } else if (action === "leave") {
+        toast("left the slipstream — you seemed away");
+        leaveSlipstreamRef.current();
+      }
+    }, AFK_CHECK_MS);
+    return () => clearInterval(iv);
+  }, [playing, slipstream, toast]);
 
   const audioElGetter = useCallback(() => audioRef.current, []);
   useMediaSession({

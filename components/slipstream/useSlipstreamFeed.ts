@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { FEED_IDLE_MS } from "@/lib/afk";
+import { idleFor } from "@/lib/hooks/interaction";
 import { FEED_POLL_MS } from "@/lib/slipstream";
 
 export interface FeedRow {
@@ -38,7 +40,10 @@ export function useSlipstreamFeed(): { rows: FeedRow[]; you: number | null } {
     };
     load();
     const iv = setInterval(() => {
-      if (!document.hidden) load();
+      // Idle gate: a visible but untouched tab polling forever is what
+      // keeps Neon compute from ever autosuspending. Any interaction
+      // resumes on the next tick (≤15s — fine for a presence list).
+      if (!document.hidden && idleFor() <= FEED_IDLE_MS) load();
     }, FEED_POLL_MS);
     const onVisible = () => {
       if (!document.hidden) load();
