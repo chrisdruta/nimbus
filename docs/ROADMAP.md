@@ -70,6 +70,49 @@ plain-web also keeps a future Cast receiver a plain page.
 
 ## Shipped
 
+### Fourier scene: 2D spatial-frequency viz (2026-07-15)
+
+New "fourier" stage scene (mode 6): the live spectrum is rasterized as a
+rotating stripe field, run through a 2D image FFT (`lib/viz/fft2d.ts` —
+radix-2, strided column passes, no transpose), and the log-magnitude
+spectrum is what's painted: by the rotation theorem, a sweeping line of
+harmonic dots that lunges on beats. On a confident tempo estimate the
+base spin locks to the grid — one revolution per 16 beats, so the sweep
+completes every four bars — easing back to the `spin` slider rate when
+confidence drops (0 = still). A "roll" tune toggle swaps the
+source for the scrolling spectrogram, whose 2D FFT is the modulation
+spectrum — rhythm and tempo as a dot lattice; the spectrogram image
+rotates through the same spin/kick state (`rotateField`,
+nearest-neighbor back-sampling), so its lattice sweeps like the
+stripes do. Field construction is
+analytic (`lib/viz/fourier.ts`, no getImageData); mean subtraction
+kills the DC spike, a separable Hann window (toggleable) suppresses the
+boundary cross, and a fast-attack/slow-release peak normalizer holds
+brightness steady. An "artwork" toggle multiplies the source field by
+the album art's luminance (extracted once per track at grid
+resolution), which convolves the art's own 2D spectrum onto every
+harmonic dot — texture instead of points. A "bokeh" toggle runs
+bloom-style FFT convolution (inverse transform via the conjugate
+trick): the field's highlights are extracted, convolved with a small
+sum-normalized art kernel, and layered back over the crisp base, so
+bright dots bloom into art-shaped glints. Convolving the whole field
+was tried first and reads as fog; sprite-splatting (tiny covers
+stamped on peaks) was also built and cut on sight. Alongside: every
+tune knob across all scenes now carries a `hint` (required on
+`FieldDef`, so new knobs can't ship without one) shown as a hover
+tooltip on the dotted-underlined label. Pixels colorize through an accent LUT with alpha
+rising from 0 (backdrop shows through), n×n offscreen upscaled with a
+cover transform. Grid 64/128/256 (256 computes every other frame); a
+corner inset shows the source pattern being transformed. Presets:
+orbit / lattice / crystal.
+
+Validation: 22 new unit tests (impulse/cosine/Parseval/rotation-theorem
+FFT checks, rasterizer determinism, normalizer silence clamp, LUT
+ramp); full suite 358 pass, typecheck clean; visually verified via
+playwright-cli in all three presets — stripes show the rotating
+harmonic dot-line, roll shows the modulation lattice, tune knobs and
+inset live-update.
+
 ### Piano polish + art-mode tune (2026-07-14)
 
 Follow-ups: piano's backdrop artwork enlarged (~0.78 of the roll

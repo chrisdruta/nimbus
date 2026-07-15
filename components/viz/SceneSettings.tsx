@@ -13,6 +13,33 @@ import {
 import { IconX } from "@/components/ui/icons";
 
 /**
+ * Knob label with its hint on hover — a quiet dotted underline marks
+ * that there's something to hover. The tooltip floats above the label
+ * inside the popover (hand-rolled; no title attribute so it's styled
+ * and instant).
+ */
+function FieldLabel({
+  label,
+  hint,
+  className = "",
+}: {
+  label: string;
+  hint: string;
+  className?: string;
+}) {
+  return (
+    <span className={`group/hint relative ${className}`}>
+      <span className="underline decoration-white/15 decoration-dotted underline-offset-2 group-hover/hint:decoration-white/40">
+        {label}
+      </span>
+      <span className="pointer-events-none absolute bottom-full left-0 z-20 mb-1.5 hidden w-52 rounded-md border border-white/10 bg-black/90 px-2.5 py-1.5 text-[10px] leading-relaxed text-white/70 group-hover/hint:block">
+        {hint}
+      </span>
+    </span>
+  );
+}
+
+/**
  * Per-scene tuning popover: a compact box anchored just above the "tune"
  * button in the stage's bottom-right corner, so the controls appear
  * where the cursor already is — every change applies live and persists
@@ -87,7 +114,7 @@ export function SceneSettings({
                 key={field.key}
                 className="flex cursor-pointer items-center justify-between text-xs text-muted"
               >
-                {field.label}
+                <FieldLabel label={field.label} hint={field.hint} />
                 <button
                   onClick={() =>
                     onChange(withOverride(payload, scene, field.key, !on))
@@ -110,7 +137,7 @@ export function SceneSettings({
                 key={field.key}
                 className="flex items-center justify-between text-xs text-muted"
               >
-                {field.label}
+                <FieldLabel label={field.label} hint={field.hint} />
                 <div className="flex gap-1">
                   {field.options.map((opt) => (
                     <button
@@ -136,7 +163,11 @@ export function SceneSettings({
               key={field.key}
               className="flex items-center gap-2 text-xs text-muted"
             >
-              <span className="w-16 shrink-0">{field.label}</span>
+              <FieldLabel
+                label={field.label}
+                hint={field.hint}
+                className="w-16 shrink-0"
+              />
               <input
                 type="range"
                 min={field.min}

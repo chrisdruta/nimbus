@@ -57,6 +57,38 @@ export interface PianoSettings {
   gate: number;
 }
 
+export interface FourierSettings {
+  /** Source: false = rotating stripe field, true = spectrogram roll. */
+  roll: boolean;
+  /** 2D FFT grid resolution (n×n). */
+  grid: number;
+  /**
+   * Base rotation in deg/sec, both sources. A confident tempo
+   * overrides the rate (one rev per 16 beats); 0 disables spin entirely.
+   */
+  spin: number;
+  /** Pre-log magnitude gain — higher pulls out faint harmonics. */
+  gain: number;
+  /** Stripe fill fraction — lower cuts sharper edges, richer dot trains. */
+  duty: number;
+  /** Roll window in seconds (spectrogram source). */
+  historySec: number;
+  /** 2D Hann window; off keeps the axis-aligned boundary cross. */
+  window: boolean;
+  /** Corner preview of the source pattern being transformed. */
+  inset: boolean;
+  /**
+   * Multiply the source field by the album-art luminance before the
+   * FFT — the artwork's spectrum convolves onto every harmonic dot.
+   */
+  art: boolean;
+  /**
+   * Convolve the painted spectrum with a small album-art kernel
+   * (FFT convolution) — every dot blooms into an art-shaped glint.
+   */
+  bokeh: boolean;
+}
+
 export interface ArtSettings {
   /** The slow scale swell on the centered artwork. */
   breathe: boolean;
@@ -68,6 +100,7 @@ export interface SceneSettingsMap {
   scope: ScopeSettings;
   ridge: RidgeSettings;
   piano: PianoSettings;
+  fourier: FourierSettings;
 }
 
 export type SceneVisualSettings = SceneSettingsMap[StageMode];
@@ -97,46 +130,177 @@ export const SETTINGS_DEFAULTS: SceneSettingsMap = {
     roll: false,
     gate: 0.3,
   },
+  fourier: {
+    roll: false,
+    grid: 128,
+    spin: 18,
+    gain: 1.5,
+    duty: 0.7,
+    historySec: 4,
+    window: true,
+    inset: true,
+    art: false,
+    bokeh: false,
+  },
 };
 
 export type FieldDef =
-  | { kind: "range"; key: string; label: string; min: number; max: number; step: number }
-  | { kind: "choice"; key: string; label: string; options: number[] }
-  | { kind: "toggle"; key: string; label: string };
+  | { kind: "range"; key: string; label: string; hint: string; min: number; max: number; step: number }
+  | { kind: "choice"; key: string; label: string; hint: string; options: number[] }
+  | { kind: "toggle"; key: string; label: string; hint: string };
 
 export const SETTINGS_FIELDS: Record<StageMode, FieldDef[]> = {
-  art: [{ kind: "toggle", key: "breathe", label: "breathe" }],
+  art: [
+    {
+      kind: "toggle", key: "breathe", label: "breathe",
+      hint: "slow scale swell on the centered artwork",
+    },
+  ],
   bars: [
-    { kind: "choice", key: "barCount", label: "bars", options: [32, 48, 64, 96] },
-    { kind: "range", key: "gravity", label: "gravity", min: 2, max: 20, step: 0.5 },
-    { kind: "range", key: "monstercat", label: "smoothing", min: 1, max: 2, step: 0.05 },
-    { kind: "range", key: "tiltDbPerOct", label: "tilt", min: -3, max: 6, step: 0.5 },
-    { kind: "range", key: "freqLow", label: "low hz", min: 20, max: 200, step: 5 },
-    { kind: "range", key: "freqHigh", label: "high hz", min: 6000, max: 16000, step: 250 },
-    { kind: "range", key: "noiseFloor", label: "floor", min: 0, max: 0.15, step: 0.01 },
-    { kind: "toggle", key: "mirror", label: "mirror" },
-    { kind: "toggle", key: "caps", label: "caps" },
+    {
+      kind: "choice", key: "barCount", label: "bars", options: [32, 48, 64, 96],
+      hint: "how many bars split the spectrum",
+    },
+    {
+      kind: "range", key: "gravity", label: "gravity", min: 2, max: 20, step: 0.5,
+      hint: "how fast bars fall after a peak",
+    },
+    {
+      kind: "range", key: "monstercat", label: "smoothing", min: 1, max: 2, step: 0.05,
+      hint: "each bar lifts its neighbors — higher is rounder",
+    },
+    {
+      kind: "range", key: "tiltDbPerOct", label: "tilt", min: -3, max: 6, step: 0.5,
+      hint: "per-octave gain: positive lifts the highs",
+    },
+    {
+      kind: "range", key: "freqLow", label: "low hz", min: 20, max: 200, step: 5,
+      hint: "where the spectrum starts",
+    },
+    {
+      kind: "range", key: "freqHigh", label: "high hz", min: 6000, max: 16000, step: 250,
+      hint: "where the spectrum ends",
+    },
+    {
+      kind: "range", key: "noiseFloor", label: "floor", min: 0, max: 0.15, step: 0.01,
+      hint: "cut analyser noise below this level",
+    },
+    {
+      kind: "toggle", key: "mirror", label: "mirror",
+      hint: "mirror around the centerline instead of rising from the floor",
+    },
+    {
+      kind: "toggle", key: "caps", label: "caps",
+      hint: "white peak-hold markers that linger, then fall",
+    },
   ],
   scope: [
-    { kind: "range", key: "glow", label: "glow", min: 0, max: 1, step: 0.05 },
-    { kind: "range", key: "trail", label: "trail", min: 0, max: 0.9, step: 0.05 },
-    { kind: "range", key: "gainTarget", label: "fill", min: 0.15, max: 0.6, step: 0.05 },
-    { kind: "range", key: "lineWeight", label: "line", min: 1, max: 4, step: 0.25 },
+    {
+      kind: "range", key: "glow", label: "glow", min: 0, max: 1, step: 0.05,
+      hint: "halo strength around the trace",
+    },
+    {
+      kind: "range", key: "trail", label: "trail", min: 0, max: 0.9, step: 0.05,
+      hint: "phosphor persistence: how much of the last frame survives",
+    },
+    {
+      kind: "range", key: "gainTarget", label: "fill", min: 0.15, max: 0.6, step: 0.05,
+      hint: "auto-gain target: how much height the wave fills",
+    },
+    {
+      kind: "range", key: "lineWeight", label: "line", min: 1, max: 4, step: 0.25,
+      hint: "trace thickness",
+    },
   ],
   ridge: [
-    { kind: "range", key: "rows", label: "ridges", min: 16, max: 56, step: 4 },
-    { kind: "range", key: "historySec", label: "history", min: 1.5, max: 8, step: 0.5 },
-    { kind: "range", key: "lineWeight", label: "line", min: 1, max: 3, step: 0.2 },
+    {
+      kind: "range", key: "rows", label: "ridges", min: 16, max: 56, step: 4,
+      hint: "how many history rows stack up",
+    },
+    {
+      kind: "range", key: "historySec", label: "history", min: 1.5, max: 8, step: 0.5,
+      hint: "seconds of spectrum the stack spans",
+    },
+    {
+      kind: "range", key: "lineWeight", label: "line", min: 1, max: 3, step: 0.2,
+      hint: "ridge line thickness",
+    },
   ],
   piano: [
-    { kind: "choice", key: "keys", label: "keys", options: [49, 61, 72, 88] },
-    { kind: "toggle", key: "roll", label: "roll" },
-    { kind: "range", key: "gate", label: "gate", min: 0.05, max: 0.6, step: 0.05 },
-    { kind: "range", key: "gravity", label: "release", min: 4, max: 28, step: 1 },
-    { kind: "range", key: "glow", label: "glow", min: 0, max: 1, step: 0.05 },
-    { kind: "range", key: "tiltDbPerOct", label: "tilt", min: 0, max: 6, step: 0.5 },
-    { kind: "range", key: "noiseFloor", label: "floor", min: 0, max: 0.15, step: 0.01 },
-    { kind: "toggle", key: "labels", label: "octaves" },
+    {
+      kind: "choice", key: "keys", label: "keys", options: [49, 61, 72, 88],
+      hint: "keyboard size in semitones",
+    },
+    {
+      kind: "toggle", key: "roll", label: "roll",
+      hint: "notes scroll upward over time; off keeps static beams",
+    },
+    {
+      kind: "range", key: "gate", label: "gate", min: 0.05, max: 0.6, step: 0.05,
+      hint: "how bright a note must be to enter the roll",
+    },
+    {
+      kind: "range", key: "gravity", label: "release", min: 4, max: 28, step: 1,
+      hint: "how fast keys dim after a note",
+    },
+    {
+      kind: "range", key: "glow", label: "glow", min: 0, max: 1, step: 0.05,
+      hint: "beam and roll brightness above the keybed",
+    },
+    {
+      kind: "range", key: "tiltDbPerOct", label: "tilt", min: 0, max: 6, step: 0.5,
+      hint: "per-octave gain: lifts quiet high notes",
+    },
+    {
+      kind: "range", key: "noiseFloor", label: "floor", min: 0, max: 0.15, step: 0.01,
+      hint: "cut analyser noise below this level",
+    },
+    {
+      kind: "toggle", key: "labels", label: "octaves",
+      hint: "octave markers on the c keys",
+    },
+  ],
+  fourier: [
+    {
+      kind: "choice", key: "grid", label: "grid", options: [64, 128, 256],
+      hint: "fft resolution: sharper detail, more cpu",
+    },
+    {
+      kind: "toggle", key: "roll", label: "roll",
+      hint: "transform the scrolling spectrogram instead of rotating stripes",
+    },
+    {
+      kind: "range", key: "spin", label: "spin", min: 0, max: 60, step: 2,
+      hint: "base rotation speed; a confident tempo takes over (one spin per 16 beats)",
+    },
+    {
+      kind: "range", key: "gain", label: "contrast", min: 0.5, max: 3, step: 0.1,
+      hint: "gain before the log: digs out faint harmonics",
+    },
+    {
+      kind: "range", key: "duty", label: "duty", min: 0.4, max: 1, step: 0.05,
+      hint: "stripe fill width: thinner cuts sharper edges, richer dots",
+    },
+    {
+      kind: "range", key: "historySec", label: "history", min: 2, max: 8, step: 0.5,
+      hint: "seconds the spectrogram window spans",
+    },
+    {
+      kind: "toggle", key: "art", label: "artwork",
+      hint: "shape the stripes by the album art's brightness",
+    },
+    {
+      kind: "toggle", key: "bokeh", label: "bokeh",
+      hint: "bright dots bloom into art-shaped glints",
+    },
+    {
+      kind: "toggle", key: "window", label: "window",
+      hint: "soften the field edges to hide the axis-aligned cross",
+    },
+    {
+      kind: "toggle", key: "inset", label: "inset",
+      hint: "corner preview of the pattern being transformed",
+    },
   ],
 };
 
@@ -197,6 +361,11 @@ export const PRESETS: Record<StageMode, Preset[]> = {
       values: { glow: 0.15, labels: false },
     },
   ],
+  fourier: [
+    { id: "orbit", label: "orbit", values: {} },
+    { id: "lattice", label: "lattice", values: { roll: true, gain: 2 } },
+    { id: "crystal", label: "crystal", values: { grid: 256, spin: 8, duty: 0.55 } },
+  ],
 };
 
 /** One scene's persisted choice: a preset id plus advanced deltas. */
@@ -212,7 +381,7 @@ export interface SceneSettingsPayload {
 
 export const EMPTY_SETTINGS: SceneSettingsPayload = { v: 1, scenes: {} };
 
-const MODE_IDS: StageMode[] = ["art", "bars", "scope", "ridge", "piano"];
+const MODE_IDS: StageMode[] = ["art", "bars", "scope", "ridge", "piano", "fourier"];
 
 export function isSceneSettingsPayload(
   v: unknown,

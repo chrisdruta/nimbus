@@ -55,7 +55,7 @@ export function ScenePicker({
             </button>
           ))}
           <p className="mt-1.5 pl-5 text-[10px] text-muted/80">
-            ←→ · 1–5 · esc
+            ←→ · 1–6 · esc
           </p>
         </>
       ) : (

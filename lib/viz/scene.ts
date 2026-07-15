@@ -62,7 +62,7 @@ export interface VizTheme {
   reducedMotion: boolean;
 }
 
-export type SceneId = "bars" | "ridge" | "scope" | "piano";
+export type SceneId = "bars" | "ridge" | "scope" | "piano" | "fourier";
 
 export const SCENE_META: ReadonlyArray<{
   id: SceneId;
@@ -74,6 +74,7 @@ export const SCENE_META: ReadonlyArray<{
   { id: "ridge", label: "ridgeline", maxWidth: 1280 },
   { id: "scope", label: "scope", maxWidth: 1100 },
   { id: "piano", label: "piano", maxWidth: 1440 },
+  { id: "fourier", label: "fourier", maxWidth: 1280 },
 ];
 
 export function isSceneId(v: unknown): v is SceneId {
