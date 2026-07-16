@@ -1,6 +1,6 @@
 import "server-only";
 
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { getPool, sql, type UpsertUserFields, type UserRow } from "./db";
 
 const INVITE_TTL_DAYS = 7;
@@ -10,7 +10,6 @@ export class InviteInvalidError extends Error {}
 
 export interface InviteRow {
   id: number;
-  code: string;
   note: string | null;
   created_at: Date;
   expires_at: Date;
@@ -38,10 +37,20 @@ export function generateInviteCode(): string {
   return randomBytes(16).toString("base64url");
 }
 
+/** Codes are bearer credentials, so only this digest is stored. Plain
+ * SHA-256 suffices — the input is 128 bits of randomness, so there is
+ * nothing for a dictionary or rainbow table to find. */
+export function hashInviteCode(code: string): string {
+  return createHash("sha256").update(code, "utf8").digest("hex");
+}
+
+/** The plaintext code exists only in this creation result — it is shown
+ * (and copied) once and cannot be recovered afterwards. */
+export type CreatedInvite = InviteRow & { code: string };
+
 function toInviteRow(row: Record<string, unknown>): InviteRow {
   return {
     id: Number(row.id),
-    code: String(row.code),
     note: (row.note as string) ?? null,
     created_at: new Date(row.created_at as string | Date),
     expires_at: new Date(row.expires_at as string | Date),
@@ -52,19 +61,20 @@ function toInviteRow(row: Record<string, unknown>): InviteRow {
   };
 }
 
-export async function createInvite(note: string | null): Promise<InviteRow> {
+export async function createInvite(note: string | null): Promise<CreatedInvite> {
+  const code = generateInviteCode();
   const rows = await sql()`
-    INSERT INTO invites (code, note, expires_at)
-    VALUES (${generateInviteCode()}, ${note},
+    INSERT INTO invites (code_hash, note, expires_at)
+    VALUES (${hashInviteCode(code)}, ${note},
             now() + make_interval(days => ${INVITE_TTL_DAYS}))
-    RETURNING id, code, note, created_at, expires_at, revoked_at, used_at, used_by
+    RETURNING id, note, created_at, expires_at, revoked_at, used_at, used_by
   `;
-  return toInviteRow(rows[0]);
+  return { ...toInviteRow(rows[0]), code };
 }
 
 export async function listInvites(): Promise<InviteRow[]> {
   const rows = await sql()`
-    SELECT i.id, i.code, i.note, i.created_at, i.expires_at, i.revoked_at,
+    SELECT i.id, i.note, i.created_at, i.expires_at, i.revoked_at,
            i.used_at, i.used_by, u.sc_username AS used_by_username
     FROM invites i
     LEFT JOIN users u ON u.id = i.used_by
@@ -88,8 +98,8 @@ export async function getClaimableInvite(
   code: string,
 ): Promise<InviteRow | null> {
   const rows = await sql()`
-    SELECT id, code, note, created_at, expires_at, revoked_at, used_at, used_by
-    FROM invites WHERE code = ${code}
+    SELECT id, note, created_at, expires_at, revoked_at, used_at, used_by
+    FROM invites WHERE code_hash = ${hashInviteCode(code)}
   `;
   if (!rows[0]) return null;
   const invite = toInviteRow(rows[0]);
@@ -110,10 +120,10 @@ export async function claimInviteAndCreateUser(
     await client.query("BEGIN");
     const claim = await client.query(
       `UPDATE invites SET used_at = now()
-       WHERE code = $1 AND used_at IS NULL AND revoked_at IS NULL
+       WHERE code_hash = $1 AND used_at IS NULL AND revoked_at IS NULL
          AND expires_at > now()
        RETURNING id`,
-      [code],
+      [hashInviteCode(code)],
     );
     if (claim.rows.length === 0) {
       await client.query("ROLLBACK");

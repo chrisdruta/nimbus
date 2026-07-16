@@ -26,9 +26,18 @@ project 30 days) trends toward its cap in the dashboard.
 
 ## Next / ideas
 
-- **Slipstream follow-ups** — private-listening opt-out toggle (one
-  `users` column + a `WHERE`, the heartbeat POST early-returns); preview
-  badge for `access: "preview"` tracks (30s snippets via the API).
+- **Slipstream follow-ups** — preview badge for `access: "preview"`
+  tracks (30s snippets via the API).
+- **CSP: drop `script-src 'unsafe-inline'`** — nonce middleware (all
+  routes are already dynamic, so no static-rendering cost). Deferred from
+  the 2026-07-16 security pass as the highest-regression-risk item
+  (hydration, OAuth redirects, hls.js); verify OAuth/player/viz live
+  before shipping.
+- **Route-level integration tests** — the 2026-07-16 audit wanted
+  DB-backed route tests (auth callback branches, same-origin rejection,
+  quota headers). Contradicts the pure-functions-only test convention and
+  needs new infra (no Docker in the devcontainer — PGlite?); revisit as
+  its own milestone if regressions start slipping through live checks.
 - **Reposter names in the feed** — `/me/feed/tracks` exposes reposters
   only as bare URNs (`soundcloud:users:N`); showing names would need a
   cached `/users/{urn}` lookup per reposter. Skipped in M8 as not worth
@@ -65,6 +74,62 @@ OffscreenCanvas worker → WebGL/WebGPU → only then WASM+SIMD. Staying
 plain-web also keeps a future Cast receiver a plain page.
 
 ## Shipped
+
+### Security & privacy pass (2026-07-16)
+
+Implementation of a four-item external security/privacy review (two
+privacy defaults, two defense-in-depth gaps; no high-severity findings —
+the token-broker, auth, and quota architecture came through clean).
+
+- **Private listening** — a "private listening" switch atop the queue
+  panel hides plain presence from "listening now". Deliberately **opt-out**
+  (the audit suggested opt-in; at friends scale a default-dark feed kills
+  the feature, and membership is invite-only). One `users.private_listening`
+  column; the feed query filters, the heartbeat POST gates server-side
+  (rogue clients get their presence rows cleared), `PUT /api/me/privacy`
+  drops the row instantly on enable, and the client publisher gate
+  (`publisherEnabled`, pure) sends the existing final `playing:false` beat.
+  Hosting a shared session still publishes — sharing is its own explicit
+  act, disclosed in the switch tooltip along with the 10-track window
+  (which followers need to sync; the audit's payload-trim idea was
+  declined for that reason).
+- **Invalid-membership farewell** — removed/disabled members' next
+  navigation routes through `GET /api/auth/cleanup`, which verifies
+  invalidity server-side (never wipes anonymous visitors or valid members,
+  nor on transient DB errors), expires both cookie variants, sends
+  `Clear-Site-Data: "cache", "storage"`, and lands on `/?bye=<reason>`
+  where a client sweeper (`lib/local-data.ts`, client-only) clears every
+  user's `nimbus*` localStorage + the IndexedDB library cache — also the
+  HTTP-dev fallback where Clear-Site-Data is ignored. Explicit logout
+  shares the header helper; a sidebar "erase local data" action clears the
+  device without signing out. Known limit: server-side deletion can't
+  erase a device that never reconnects.
+- **Rate limiter honesty + hardening** — documented as per-instance loop
+  protection (not a security boundary; the durable budget is the play
+  quota). `requestIp` now prefers platform-set `x-real-ip`, validates
+  shape, and collapses garbage to "unknown" (`clientIpFrom`, pure).
+  Provider-backed routes get a tighter independent 120/min per-user bucket
+  (`consumeProviderLimit` in all 15 provider handlers); 5–15s polling
+  routes stay under only the 600/min ceiling, so client cadences are
+  untouched.
+- **Invites hashed at rest** — `invites.code` (plaintext bearer) replaced
+  by `code_hash` (SHA-256; 128-bit random codes need no KDF). The schema
+  migration backfills hashes for existing rows in a guarded DO block
+  (idempotent; PG `sha256()` verified equal to Node's digest live) then
+  drops the plaintext column — zero dual-read window. The admin API
+  returns the link only in the creation response; the list has no url and
+  the UI says so ("shown once — revoke and create a new one if lost").
+
+Validation: 398 tests green (18 new: publisherEnabled truth table,
+clientIpFrom parsing, bucket independence, hashInviteCode vectors,
+isNimbusKey); typecheck + production build clean; schema applied twice
+over live data. Live: presence row appears/vanishes/returns around the
+switch within one beat (guest browser observing, one play); disabled
+guest's cleanup hit returned 303 `/?bye=disabled` + Clear-Site-Data +
+expired cookie, while valid/anonymous/garbage-cookie hits got plain
+redirects; farewell landing swept `nimbus*` keys and left foreign keys;
+invite create→list→landing→revoke lifecycle correct with hashed rows
+(legacy invites still claimable post-backfill).
 
 ### Collection auto-continue (2026-07-16)
 

@@ -45,6 +45,7 @@ always credit and link back to their creator and SoundCloud.
   join someone's slipstream to hear what they hear, position-synced and
   read-only. Your own queue parks untouched and every listener streams
   through their own account — leave and you're back exactly where you were.
+  A "private listening" switch hides you from the feed whenever you want.
 - **Shared sessions**: share your queue and it becomes everyone's — friends
   who join can queue tracks from their own library (credited by name),
   remove and reorder what's coming, and skip for the whole room. The host's

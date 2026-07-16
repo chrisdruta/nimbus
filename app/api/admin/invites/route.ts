@@ -9,21 +9,30 @@ import {
   createInvite,
   inviteStatus,
   listInvites,
+  type CreatedInvite,
   type InviteRow,
 } from "@/lib/server/invites";
 
 export const runtime = "nodejs";
 
+// Codes are stored hashed, so the link is only constructible here, in the
+// creation response — the list shape deliberately has no url.
 function toApi(invite: InviteRow) {
   return {
     id: invite.id,
     note: invite.note,
     status: inviteStatus(invite),
-    url: new URL(`/invite/${invite.code}`, process.env.APP_URL).toString(),
     createdAt: invite.created_at.toISOString(),
     expiresAt: invite.expires_at.toISOString(),
     usedAt: invite.used_at?.toISOString() ?? null,
     usedByUsername: invite.used_by_username,
+  };
+}
+
+function toCreatedApi(invite: CreatedInvite) {
+  return {
+    ...toApi(invite),
+    url: new URL(`/invite/${invite.code}`, process.env.APP_URL).toString(),
   };
 }
 
@@ -43,6 +52,6 @@ export async function POST(req: NextRequest) {
     }
     if (note && note.length > 500)
       throw new BadRequestError("note is too long");
-    return toApi(await createInvite(note?.trim() || null));
+    return toCreatedApi(await createInvite(note?.trim() || null));
   });
 }

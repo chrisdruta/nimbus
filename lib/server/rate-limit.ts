@@ -1,8 +1,14 @@
 import "server-only";
 
-/** Lightweight per-instance limiter. Vercel instances do not share this
- * state, so durable play quotas remain the hard budget; this absorbs bursts
- * and accidental loops without adding infrastructure at friends scale. */
+/**
+ * Lightweight per-instance limiter — loop protection, not a security
+ * boundary. State is in-memory: it resets on cold starts and is not shared
+ * between serverless instances, so a distributed burst can exceed these
+ * numbers by the instance count. The durable control that actually bounds
+ * spend is the daily play quota (lib/server/quota.ts); this layer absorbs
+ * client bugs and accidental loops without adding infrastructure at
+ * friends scale.
+ */
 
 interface Bucket {
   count: number;
@@ -46,6 +52,46 @@ export function consumeRateLimit(
   }
 }
 
+/** Expensive provider-backed routes get a tighter per-user bucket than the
+ * generic 600/min ceiling: every one of these requests costs a SoundCloud
+ * API call. 120/min still dwarfs legitimate use (a full library walk is 4
+ * pages, feed pagination 6, search is debounced) while the 5–15s polling
+ * routes never touch this bucket, so client cadences are unaffected. */
+export function consumeProviderLimit(userId: number): void {
+  consumeRateLimit(`provider:${userId}`, 120, 60_000);
+}
+
+// Loose shape checks — enough to reject header garbage, not a validator.
+const IPV4_RE = /^\d{1,3}(?:\.\d{1,3}){3}$/;
+const IPV6_RE = /^[0-9a-fA-F:.]{2,45}$/;
+
+function looksLikeIp(value: string): boolean {
+  if (value.length > 45) return false;
+  if (IPV4_RE.test(value)) return true;
+  return value.includes(":") && IPV6_RE.test(value);
+}
+
+/**
+ * Pure client-IP derivation. Prefers x-real-ip — on Vercel it is set by the
+ * platform and not client-spoofable — and falls back to the first
+ * x-forwarded-for hop. Anything that doesn't look like an IP collapses to
+ * "unknown" (which is also what all local-dev traffic shares: no proxy
+ * headers exist there, and the pre-auth limits are generous enough).
+ */
+export function clientIpFrom(
+  realIp: string | null,
+  xff: string | null,
+): string {
+  const real = realIp?.trim();
+  if (real && looksLikeIp(real)) return real;
+  const first = xff?.split(",")[0]?.trim();
+  if (first && looksLikeIp(first)) return first;
+  return "unknown";
+}
+
 export function requestIp(headers: Headers): string {
-  return headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  return clientIpFrom(
+    headers.get("x-real-ip"),
+    headers.get("x-forwarded-for"),
+  );
 }

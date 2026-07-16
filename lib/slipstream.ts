@@ -27,6 +27,23 @@ export const END_GRACE_MS = 8_000;
 /** Current track + up to 9 upcoming ride in each window snapshot. */
 export const WINDOW_SIZE = 10;
 
+/**
+ * Should this client publish presence beats? Inert while following (chained
+ * follows stay impossible by construction) and while listening privately —
+ * except when hosting a shared session, which is an explicit act that
+ * publishes regardless of the privacy preference.
+ */
+export function publisherEnabled(opts: {
+  playing: boolean;
+  hasTrack: boolean;
+  following: boolean;
+  privateListening: boolean;
+  hostingShared: boolean;
+}): boolean {
+  if (!opts.playing || !opts.hasTrack || opts.following) return false;
+  return !opts.privateListening || opts.hostingShared;
+}
+
 export interface SlipstreamSnapshot {
   hostId: number;
   trackId: number;

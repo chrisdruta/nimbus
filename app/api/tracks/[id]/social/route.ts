@@ -1,3 +1,4 @@
+import { consumeProviderLimit } from "@/lib/server/rate-limit";
 import { getProvider } from "@/lib/provider";
 import { getValidAccessToken } from "@/lib/server/tokens";
 import { positiveSafeInteger, withUser } from "@/lib/server/route-helpers";
@@ -11,6 +12,7 @@ export async function GET(
 ) {
   const { id } = await params;
   return withUser(async (session) => {
+    consumeProviderLimit(session.userId);
     const trackId = positiveSafeInteger(id, "track id");
     const { accessToken } = await getValidAccessToken(session.userId);
     return getProvider().getTrackSocial(accessToken, trackId);

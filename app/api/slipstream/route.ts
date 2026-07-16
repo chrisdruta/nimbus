@@ -6,7 +6,11 @@ import {
   requireSameOrigin,
 } from "@/lib/server/route-helpers";
 import { parseHeartbeat } from "@/lib/slipstream";
-import { upsertSlipstream } from "@/lib/server/slipstream-store";
+import {
+  clearPresence,
+  getPrivateListening,
+  upsertSlipstream,
+} from "@/lib/server/slipstream-store";
 import type { SharedWire } from "@/lib/shared-queue";
 
 export const runtime = "nodejs";
@@ -25,6 +29,14 @@ export async function POST(req: NextRequest) {
     const body = await readJsonBody(req, 32 * 1024);
     const hb = parseHeartbeat(body);
     if (!hb) throw new BadRequestError("malformed heartbeat");
+    // Private listening gates plain presence server-side (the client also
+    // stops sending — this covers rogue/stale clients). Shared-session
+    // beats pass: sharing is an explicit act. Clearing instead of ignoring
+    // preserves the plain-beat session self-heal while gated.
+    if (hb.sharedRev === undefined && (await getPrivateListening(session.userId))) {
+      await clearPresence(session.userId);
+      return { ok: true };
+    }
     const state = await upsertSlipstream(session.userId, hb);
     if (!state) return { ok: true };
     const shared: SharedWire = {

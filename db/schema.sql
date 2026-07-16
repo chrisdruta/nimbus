@@ -15,12 +15,16 @@ CREATE TABLE IF NOT EXISTS users (
 ALTER TABLE users ADD COLUMN IF NOT EXISTS sc_username text;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url  text;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS disabled    boolean NOT NULL DEFAULT false;
+-- Hides plain listening presence from the feed; explicitly shared sessions
+-- still publish (sharing is its own deliberate act).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS private_listening boolean NOT NULL DEFAULT false;
 
--- Single-use invite links. Codes are stored in the clear so the admin UI can
--- re-copy an active link; a leaked code only grants entry to this app.
+-- Single-use invite links. Codes are bearer credentials, so only their
+-- SHA-256 digest is stored — the link is shown once at creation and cannot
+-- be recovered; a read-only DB leak exposes no usable invites.
 CREATE TABLE IF NOT EXISTS invites (
   id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  code       text UNIQUE NOT NULL,
+  code_hash  text UNIQUE NOT NULL,
   note       text,
   created_at timestamptz NOT NULL DEFAULT now(),
   expires_at timestamptz NOT NULL,
@@ -28,6 +32,23 @@ CREATE TABLE IF NOT EXISTS invites (
   used_at    timestamptz,
   used_by    bigint REFERENCES users(id) ON DELETE SET NULL
 );
+
+-- Migration for databases predating code_hash: hash the plaintext codes in
+-- place (PG built-in sha256() matches Node's hex digest), then drop the
+-- plaintext column. The DO block only runs while the legacy column exists,
+-- so re-applying this file stays idempotent. Deliberate exception to the
+-- additive-only convention: removing the recoverable secret is the point.
+ALTER TABLE invites ADD COLUMN IF NOT EXISTS code_hash text UNIQUE;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_name = 'invites' AND column_name = 'code') THEN
+    UPDATE invites
+      SET code_hash = encode(sha256(convert_to(code, 'UTF8')), 'hex')
+      WHERE code_hash IS NULL;
+    ALTER TABLE invites DROP COLUMN code;
+    ALTER TABLE invites ALTER COLUMN code_hash SET NOT NULL;
+  END IF;
+END $$;
 
 -- Stream-resolution attempts per user per UTC day. Failed/unavailable tracks
 -- count too, preventing unlimited provider calls through refund loops.

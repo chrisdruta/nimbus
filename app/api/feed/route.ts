@@ -1,3 +1,4 @@
+import { consumeProviderLimit } from "@/lib/server/rate-limit";
 import { type NextRequest } from "next/server";
 import { getProvider } from "@/lib/provider";
 import { getValidAccessToken } from "@/lib/server/tokens";
@@ -8,6 +9,7 @@ export const runtime = "nodejs";
 // Discovery only — no quota; play starts are the sole quota consumer.
 export async function GET(req: NextRequest) {
   return withUser(async (session) => {
+    consumeProviderLimit(session.userId);
     const cursor = cursorParam(req);
     const { accessToken } = await getValidAccessToken(session.userId);
     const page = await getProvider().getFeedPage(accessToken, cursor);

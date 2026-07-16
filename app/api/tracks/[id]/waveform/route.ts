@@ -1,3 +1,4 @@
+import { consumeProviderLimit } from "@/lib/server/rate-limit";
 import { type NextRequest } from "next/server";
 import { getProvider } from "@/lib/provider";
 import { getValidAccessToken } from "@/lib/server/tokens";
@@ -15,6 +16,7 @@ export async function GET(
 ) {
   const { id } = await params;
   return withUser(async (session) => {
+    consumeProviderLimit(session.userId);
     const trackId = positiveSafeInteger(id, "track id");
     const { accessToken } = await getValidAccessToken(session.userId);
     const samples = await getProvider().getWaveform(accessToken, trackId);

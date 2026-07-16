@@ -11,6 +11,7 @@ import {
   nextInWindow,
   parseHeartbeat,
   planSync,
+  publisherEnabled,
   type FollowerLocal,
   type SlipstreamSnapshot,
 } from "../lib/slipstream";
@@ -349,5 +350,41 @@ describe("parseHeartbeat", () => {
   test("rejects oversized strings", () => {
     const t = { ...track(10), title: "x".repeat(501) };
     expect(parseHeartbeat({ ...valid, window: [t] })).toBeNull();
+  });
+});
+
+describe("publisherEnabled", () => {
+  const base = {
+    playing: true,
+    hasTrack: true,
+    following: false,
+    privateListening: false,
+    hostingShared: false,
+  };
+
+  test("publishes when playing normally", () => {
+    expect(publisherEnabled(base)).toBe(true);
+  });
+
+  test("inert when paused, trackless, or following", () => {
+    expect(publisherEnabled({ ...base, playing: false })).toBe(false);
+    expect(publisherEnabled({ ...base, hasTrack: false })).toBe(false);
+    expect(publisherEnabled({ ...base, following: true })).toBe(false);
+  });
+
+  test("private listening silences plain presence", () => {
+    expect(publisherEnabled({ ...base, privateListening: true })).toBe(false);
+  });
+
+  test("hosting a shared session publishes despite privacy", () => {
+    expect(
+      publisherEnabled({ ...base, privateListening: true, hostingShared: true }),
+    ).toBe(true);
+  });
+
+  test("following wins over hosting (parked host is inert)", () => {
+    expect(
+      publisherEnabled({ ...base, following: true, hostingShared: true }),
+    ).toBe(false);
   });
 });

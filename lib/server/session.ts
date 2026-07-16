@@ -115,6 +115,16 @@ export async function clearSession(): Promise<void> {
   if (secureCookies()) jar.delete(SESSION_COOKIE);
 }
 
+/** Make the browser forget this origin: caches plus localStorage,
+ * IndexedDB, and sessionStorage. Shared by explicit logout and the
+ * invalid-session farewell. Browsers only honor Clear-Site-Data over
+ * HTTPS, so the landing page also runs a client-side sweep as the
+ * HTTP-dev fallback. */
+export function setFarewellHeaders(headers: Headers): void {
+  headers.set("Clear-Site-Data", '"cache", "storage"');
+  headers.set("Cache-Control", "no-store");
+}
+
 export async function setDanceCookie(dance: OauthDance): Promise<void> {
   const jar = await cookies();
   jar.set(

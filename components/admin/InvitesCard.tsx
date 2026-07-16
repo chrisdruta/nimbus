@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useToast } from "@/components/ui/Toast";
-import type { AdminInvite } from "./AdminView";
+import type { AdminInvite, CreatedAdminInvite } from "./AdminView";
 
 const STATUS_STYLES: Record<AdminInvite["status"], string> = {
   active: "bg-accent/15 text-accent",
@@ -34,7 +34,7 @@ export function InvitesCard({
         toast("couldn't create invite", "error");
         return;
       }
-      const invite = (await res.json()) as AdminInvite;
+      const invite = (await res.json()) as CreatedAdminInvite;
       await copy(invite.url, "invite created — link copied");
       setNote("");
       onChanged();
@@ -82,7 +82,8 @@ export function InvitesCard({
         </button>
       </div>
       <p className="mt-2 text-xs text-muted">
-        single-use links, valid for 7 days
+        single-use links, valid for 7 days — shown once at creation; revoke
+        and create a new one if a link is lost
       </p>
 
       <ul className="mt-4 flex flex-col gap-2">
@@ -109,20 +110,12 @@ export function InvitesCard({
               )}
             </span>
             {invite.status === "active" && (
-              <>
-                <button
-                  onClick={() => void copy(invite.url)}
-                  className="cursor-pointer text-xs text-muted transition hover:text-white"
-                >
-                  copy link
-                </button>
-                <button
-                  onClick={() => void revoke(invite.id)}
-                  className="cursor-pointer text-xs text-muted transition hover:text-accent"
-                >
-                  revoke
-                </button>
-              </>
+              <button
+                onClick={() => void revoke(invite.id)}
+                className="cursor-pointer text-xs text-muted transition hover:text-accent"
+              >
+                revoke
+              </button>
             )}
           </li>
         ))}

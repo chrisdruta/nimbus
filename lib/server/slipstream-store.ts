@@ -92,6 +92,47 @@ export async function upsertSlipstream(
   };
 }
 
+/** The caller's private-listening preference (default false = visible). */
+export async function getPrivateListening(userId: number): Promise<boolean> {
+  const rows = await sql()`
+    SELECT private_listening FROM users WHERE id = ${userId}
+  `;
+  return Boolean(rows[0]?.private_listening);
+}
+
+/**
+ * Flip the preference; turning it on also drops any live presence row so
+ * the feed forgets the user immediately instead of after the next beat —
+ * unless they're hosting a shared session, which stays visible (sharing is
+ * an explicit act the toggle doesn't override).
+ */
+export async function setPrivateListening(
+  userId: number,
+  on: boolean,
+): Promise<void> {
+  await sql().query(
+    `WITH updated AS (
+       UPDATE users SET private_listening = $2, updated_at = now()
+       WHERE id = $1
+     )
+     DELETE FROM slipstreams
+     WHERE $2::boolean AND user_id = $1
+       AND NOT EXISTS (SELECT 1 FROM slipstream_sessions WHERE host_id = $1)`,
+    [userId, on],
+  );
+}
+
+/** Remove all presence for a user — the gated-heartbeat path, so a client
+ * still beating after the user went private can't keep rows alive (and the
+ * plain-beat session self-heal keeps working while gated). */
+export async function clearPresence(userId: number): Promise<void> {
+  await sql().query(
+    `WITH s AS (DELETE FROM slipstream_sessions WHERE host_id = $1)
+     DELETE FROM slipstreams WHERE user_id = $1`,
+    [userId],
+  );
+}
+
 export interface SlipstreamFeedRow {
   hostId: number;
   username: string | null;
@@ -109,7 +150,10 @@ export interface SlipstreamFeedRow {
 }
 
 /** Hosts currently live: playing and heartbeat-fresh. Includes the caller
- * (the client renders an inert "(you)" row as you're-live feedback). */
+ * (the client renders an inert "(you)" row as you're-live feedback).
+ * Private listeners are filtered out unless they're explicitly sharing a
+ * session — the heartbeat gate keeps their rows from existing anyway; this
+ * WHERE is defense in depth for rows that predate the toggle flip. */
 export async function listActiveSlipstreams(): Promise<SlipstreamFeedRow[]> {
   const rows = await sql()`
     SELECT s.user_id, s.updated_at, s.track_window -> 0 AS current,
@@ -119,6 +163,7 @@ export async function listActiveSlipstreams(): Promise<SlipstreamFeedRow[]> {
     JOIN users u ON u.id = s.user_id AND NOT u.disabled
     LEFT JOIN slipstream_sessions ss ON ss.host_id = s.user_id
     WHERE s.playing AND s.updated_at > now() - make_interval(secs => ${STALE_SECS})
+      AND (NOT u.private_listening OR ss.host_id IS NOT NULL)
     ORDER BY s.updated_at DESC
   `;
   return rows.map((row) => {

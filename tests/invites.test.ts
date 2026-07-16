@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { generateInviteCode, inviteStatus } from "../lib/server/invites";
+import {
+  generateInviteCode,
+  hashInviteCode,
+  inviteStatus,
+} from "../lib/server/invites";
 
 const NOW = new Date("2026-07-12T12:00:00Z");
 const PAST = new Date("2026-07-10T00:00:00Z");
@@ -64,5 +68,24 @@ describe("generateInviteCode", () => {
       Array.from({ length: 200 }, () => generateInviteCode()),
     );
     expect(codes.size).toBe(200);
+  });
+});
+
+describe("hashInviteCode", () => {
+  test("produces 64 lowercase hex chars", () => {
+    expect(hashInviteCode(generateInviteCode())).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  test("is deterministic and input-sensitive", () => {
+    const code = generateInviteCode();
+    expect(hashInviteCode(code)).toBe(hashInviteCode(code));
+    expect(hashInviteCode(code)).not.toBe(hashInviteCode(code + "x"));
+  });
+
+  test("matches the SHA-256 vector the schema backfill must reproduce", () => {
+    // encode(sha256(convert_to('abc','UTF8')),'hex') in Postgres.
+    expect(hashInviteCode("abc")).toBe(
+      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+    );
   });
 });

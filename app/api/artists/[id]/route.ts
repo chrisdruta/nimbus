@@ -1,3 +1,4 @@
+import { consumeProviderLimit } from "@/lib/server/rate-limit";
 import { type NextRequest } from "next/server";
 import { getProvider } from "@/lib/provider";
 import { getValidAccessToken } from "@/lib/server/tokens";
@@ -10,6 +11,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   return withUser(async (session) => {
+    consumeProviderLimit(session.userId);
     const artistId = positiveSafeInteger((await params).id, "artist id");
     const { accessToken } = await getValidAccessToken(session.userId);
     const provider = getProvider();

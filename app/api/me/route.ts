@@ -1,3 +1,4 @@
+import { consumeProviderLimit } from "@/lib/server/rate-limit";
 import { getProvider } from "@/lib/provider";
 import { getValidAccessToken } from "@/lib/server/tokens";
 import { withUser } from "@/lib/server/route-helpers";
@@ -8,6 +9,7 @@ export const runtime = "nodejs";
 
 export async function GET() {
   return withUser(async (session) => {
+    consumeProviderLimit(session.userId);
     const { accessToken } = await getValidAccessToken(session.userId);
     const me = await getProvider().getMe(accessToken);
     // Keep the DB's cached profile columns (admin, slipstream) in sync with

@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { clearSession } from "@/lib/server/session";
+import { clearSession, setFarewellHeaders } from "@/lib/server/session";
 import { errorResponse, requireSameOrigin } from "@/lib/server/route-helpers";
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -12,8 +12,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
     // Queue/library metadata can expose private listening history on a shared
     // browser. Disconnect means this origin forgets the local account too.
-    response.headers.set("Clear-Site-Data", '"cache", "storage"');
-    response.headers.set("Cache-Control", "no-store");
+    setFarewellHeaders(response.headers);
     return response;
   } catch (err) {
     return errorResponse(err);

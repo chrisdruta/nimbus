@@ -1,3 +1,4 @@
+import { consumeProviderLimit } from "@/lib/server/rate-limit";
 import { type NextRequest } from "next/server";
 import { getProvider } from "@/lib/provider";
 import { getValidAccessToken } from "@/lib/server/tokens";
@@ -8,6 +9,7 @@ export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
   return withUser(async (session) => {
+    consumeProviderLimit(session.userId);
     const q = normalizeSearchQuery(req.nextUrl.searchParams.get("q") ?? "");
     if (!q) throw new BadRequestError("missing search query");
     const cursor = cursorParam(req);

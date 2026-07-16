@@ -1,3 +1,4 @@
+import { consumeProviderLimit } from "@/lib/server/rate-limit";
 import { type NextRequest } from "next/server";
 import { getProvider } from "@/lib/provider";
 import { getValidAccessToken } from "@/lib/server/tokens";
@@ -15,6 +16,7 @@ function setLiked(
   liked: boolean,
 ) {
   return withUser(async (session) => {
+    consumeProviderLimit(session.userId);
     requireSameOrigin(req);
     const trackId = positiveSafeInteger((await params).id, "track id");
     const { accessToken } = await getValidAccessToken(session.userId);

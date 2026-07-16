@@ -253,6 +253,7 @@ export function SidePanel({
     shared,
     queue,
     autoRadio,
+    privateListening,
   } = usePlayerState();
   const actions = usePlayerActions();
   const upNext = actions.upcomingTracks(40);
@@ -342,6 +343,19 @@ export function SidePanel({
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+        <div className="flex items-center justify-end px-2 py-1">
+          <button
+            role="switch"
+            aria-checked={privateListening}
+            title="hides your listening from the feed — others otherwise see your current track and up to 10 upcoming; sharing a session still shows you"
+            onClick={() => actions.setPrivateListening(!privateListening)}
+            className={`shrink-0 cursor-pointer text-xs transition ${
+              privateListening ? "text-accent" : "text-muted hover:text-white"
+            }`}
+          >
+            private listening
+          </button>
+        </div>
         {/* Your own row alone just mirrors the media bar — the live section
             earns its space once someone else is listening. */}
         {feed.some((r) => r.hostId !== you) && (

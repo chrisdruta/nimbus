@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { readSession } from "@/lib/server/session";
 import { getUserAuth } from "@/lib/server/db";
+import { FarewellSweeper } from "@/components/auth/FarewellSweeper";
 
 const AUTH_ERRORS: Record<string, string> = {
   not_invited: "nimbus is invite-only — ask Chris for an invite link",
@@ -8,10 +9,15 @@ const AUTH_ERRORS: Record<string, string> = {
   disabled: "this account has been disabled",
 };
 
+const BYE_MESSAGES: Record<string, string> = {
+  disabled: "this account has been disabled",
+  removed: "this account is no longer a member",
+};
+
 export default async function Landing({
   searchParams,
 }: {
-  searchParams: Promise<{ auth_error?: string }>;
+  searchParams: Promise<{ auth_error?: string; bye?: string }>;
 }) {
   const session = await readSession();
   if (session) {
@@ -23,9 +29,15 @@ export default async function Landing({
     ) {
       redirect("/library");
     }
+    // Cookie present but membership invalid: route through the farewell so
+    // the cookie expires and local data clears. The farewell deletes the
+    // cookie before landing back here, so this can't loop.
+    redirect("/api/auth/cleanup");
   }
-  const { auth_error } = await searchParams;
-  const errorMessage = auth_error ? AUTH_ERRORS[auth_error] : undefined;
+  const { auth_error, bye } = await searchParams;
+  const errorMessage =
+    (auth_error ? AUTH_ERRORS[auth_error] : undefined) ??
+    (bye ? BYE_MESSAGES[bye] : undefined);
 
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center gap-8 px-6">
@@ -39,6 +51,7 @@ export default async function Landing({
           {errorMessage}
         </p>
       )}
+      {bye && <FarewellSweeper />}
 
       <a
         href="/api/auth/login"

@@ -31,12 +31,15 @@ export interface AdminInvite {
   id: number;
   note: string | null;
   status: "active" | "used" | "revoked" | "expired";
-  url: string;
   createdAt: string;
   expiresAt: string;
   usedAt: string | null;
   usedByUsername: string | null;
 }
+
+/** Creation is the only response carrying the link — codes are stored
+ * hashed, so a lost link means revoke and create a new one. */
+export type CreatedAdminInvite = AdminInvite & { url: string };
 
 async function getJson<T>(url: string): Promise<T> {
   const res = await fetch(url);

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { SidebarPlaylists } from "./SidebarPlaylists";
 import { IconCloud } from "@/components/ui/icons";
+import { eraseLocalData } from "@/lib/local-data";
 
 interface Me {
   id: number;
@@ -17,6 +18,13 @@ interface Me {
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const [me, setMe] = useState<Me | null>(null);
+  const [erased, setErased] = useState(false);
+
+  async function erase() {
+    await eraseLocalData();
+    setErased(true);
+    setTimeout(() => setErased(false), 2_000);
+  }
 
   useEffect(() => {
     fetch("/api/me")
@@ -66,11 +74,20 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             >
               {me.username}
             </a>
-            <form action="/api/auth/logout" method="post">
-              <button className="cursor-pointer text-xs text-muted transition hover:text-accent">
-                disconnect
+            <div className="flex items-center gap-3">
+              <form action="/api/auth/logout" method="post">
+                <button className="cursor-pointer text-xs text-muted transition hover:text-accent">
+                  disconnect
+                </button>
+              </form>
+              <button
+                onClick={() => void erase()}
+                title="clear this device's queue, library cache, and preferences"
+                className="cursor-pointer text-xs text-muted transition hover:text-accent"
+              >
+                {erased ? "cleared" : "erase local data"}
               </button>
-            </form>
+            </div>
           </div>
         </div>
       )}

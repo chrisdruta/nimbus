@@ -52,6 +52,7 @@ import {
   expectedPositionMs,
   nextInWindow,
   planSync,
+  publisherEnabled,
   type FollowerLocal,
   type SlipstreamSnapshot,
 } from "@/lib/slipstream";
@@ -187,6 +188,8 @@ export interface PlayerState {
   leveling: boolean;
   /** When a local collection queue ends, continue with radio from the last track. */
   autoRadio: boolean;
+  /** Hide plain listening presence from the feed (shared sessions still show). */
+  privateListening: boolean;
   /** Fullscreen stage (art + viz scenes) visibility. */
   stageOpen: boolean;
   queue: QueueState | null;
@@ -226,6 +229,8 @@ export interface PlayerActions {
   setLeveling(on: boolean): void;
   /** Toggle auto-continue into radio when a collection queue ends. */
   setAutoRadio(on: boolean): void;
+  /** Toggle private listening (server-stored; presence drops immediately). */
+  setPrivateListening(on: boolean): void;
   openStage(): void;
   closeStage(): void;
   getMeta(trackId: number): QueueTrack | undefined;
@@ -315,6 +320,7 @@ export function PlayerProvider({
   const [volume, setVolumeState] = useState(1);
   const [leveling, setLevelingState] = useState(true);
   const [autoRadio, setAutoRadioState] = useState(false);
+  const [privateListening, setPrivateListeningState] = useState(false);
   const [stageOpen, setStageOpen] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -411,6 +417,21 @@ export function PlayerProvider({
   }, []);
 
   // ---------------------------------------------------------- rehydrate
+
+  // Server-stored privacy pref — cross-device, so it can't live in
+  // localStorage like the other toggles.
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/me/privacy")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { privateListening: boolean } | null) => {
+        if (!cancelled && data) setPrivateListeningState(data.privateListening);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const persisted = loadQueue(userId);
@@ -1750,6 +1771,24 @@ export function PlayerProvider({
         writePref("autoRadio", on);
       },
 
+      setPrivateListening(on) {
+        // Optimistic: the publisher gate reacts immediately (sending the
+        // final playing:false beat); the server is the durable copy.
+        setPrivateListeningState(on);
+        void fetch("/api/me/privacy", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ privateListening: on }),
+        })
+          .then((res) => {
+            if (!res.ok) throw new Error();
+          })
+          .catch(() => {
+            setPrivateListeningState(!on);
+            toast("couldn't update private listening", "error");
+          });
+      },
+
       openStage: () => setStageOpen(true),
       closeStage: () => setStageOpen(false),
 
@@ -1934,8 +1973,15 @@ export function PlayerProvider({
   }, []);
 
   useSlipstreamPublisher({
-    // Inert while following — that's what makes chained follows impossible.
-    enabled: playing && !slipstream && current !== null,
+    // Inert while following or listening privately (hosting a shared
+    // session publishes regardless — sharing is its own explicit act).
+    enabled: publisherEnabled({
+      playing,
+      hasTrack: current !== null,
+      following: slipstream !== null,
+      privateListening,
+      hostingShared: shared?.role === "host",
+    }),
     trackId: current?.id ?? null,
     playing,
     windowKey,
@@ -1958,6 +2004,7 @@ export function PlayerProvider({
       volume,
       leveling,
       autoRadio,
+      privateListening,
       stageOpen,
       queue,
       caps: capsOf(
@@ -1979,6 +2026,7 @@ export function PlayerProvider({
       volume,
       leveling,
       autoRadio,
+      privateListening,
       stageOpen,
     ],
   );
