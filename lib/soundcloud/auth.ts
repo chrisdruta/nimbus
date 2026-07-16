@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { ProviderTokens } from "../provider";
 
 const AUTHORIZE_URL = "https://secure.soundcloud.com/authorize";

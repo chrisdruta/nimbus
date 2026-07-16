@@ -1,14 +1,14 @@
 import { type NextRequest } from "next/server";
 import { getProvider } from "@/lib/provider";
-import { getValidAccessToken } from "@/lib/tokens";
+import { getValidAccessToken } from "@/lib/server/tokens";
 import {
   positiveSafeInteger,
   requireSameOrigin,
   withUser,
-} from "@/lib/route-helpers";
-import { consumePlayStart } from "@/lib/quota";
-import { recordTrackPlay } from "@/lib/plays";
-import { isOwner } from "@/lib/session";
+} from "@/lib/server/route-helpers";
+import { consumePlayStart } from "@/lib/server/quota";
+import { recordTrackPlay } from "@/lib/server/plays";
+import { isOwner } from "@/lib/server/session";
 
 export const runtime = "nodejs";
 

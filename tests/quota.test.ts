@@ -5,7 +5,7 @@ import {
   utcDayKey,
   QuotaExceededError,
   type QuotaInput,
-} from "../lib/quota";
+} from "../lib/server/quota";
 
 function input(overrides: Partial<QuotaInput>): QuotaInput {
   return {

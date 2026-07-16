@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { generateInviteCode, inviteStatus } from "../lib/invites";
+import { generateInviteCode, inviteStatus } from "../lib/server/invites";
 
 const NOW = new Date("2026-07-12T12:00:00Z");
 const PAST = new Date("2026-07-10T00:00:00Z");

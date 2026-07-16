@@ -1,3 +1,5 @@
+import "server-only";
+
 import { createHash, randomBytes } from "node:crypto";
 
 /** RFC 7636 code verifier/challenge pair (S256). */

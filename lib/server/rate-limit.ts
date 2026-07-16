@@ -1,3 +1,5 @@
+import "server-only";
+
 /** Lightweight per-instance limiter. Vercel instances do not share this
  * state, so durable play quotas remain the hard budget; this absorbs bursts
  * and accidental loops without adding infrastructure at friends scale. */

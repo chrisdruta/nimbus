@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getProvider } from "@/lib/provider";
-import { getValidAccessToken } from "@/lib/tokens";
-import { BadRequestError, cursorParam, withUser } from "@/lib/route-helpers";
+import { getValidAccessToken } from "@/lib/server/tokens";
+import { BadRequestError, cursorParam, withUser } from "@/lib/server/route-helpers";
 import { normalizeSearchQuery } from "@/lib/search";
 
 export const runtime = "nodejs";

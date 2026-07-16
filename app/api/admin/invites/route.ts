@@ -4,13 +4,13 @@ import {
   BadRequestError,
   readJsonBody,
   requireSameOrigin,
-} from "@/lib/route-helpers";
+} from "@/lib/server/route-helpers";
 import {
   createInvite,
   inviteStatus,
   listInvites,
   type InviteRow,
-} from "@/lib/invites";
+} from "@/lib/server/invites";
 
 export const runtime = "nodejs";
 

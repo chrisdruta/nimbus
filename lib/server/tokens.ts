@@ -1,6 +1,8 @@
+import "server-only";
+
 import { getPool, getUserById } from "./db";
 import { decryptToken, encryptToken, tokenContext } from "./crypto";
-import { getProvider } from "./provider";
+import { getProvider } from "../provider";
 
 /** Refresh this early so a token can't expire mid-request. */
 const SKEW_MS = 60_000;

@@ -1,3 +1,5 @@
+import "client-only";
+
 import { buildHistogram, pickVibrant } from "./viz/palette";
 
 /** SoundCloud artwork URLs embed their size ("...-large.jpg" = 100x100);

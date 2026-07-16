@@ -1,9 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getProvider } from "@/lib/provider";
-import { generatePkce, generateState } from "@/lib/pkce";
-import { setDanceCookie } from "@/lib/session";
-import { errorResponse } from "@/lib/route-helpers";
-import { consumeRateLimit, requestIp } from "@/lib/rate-limit";
+import { generatePkce, generateState } from "@/lib/server/pkce";
+import { setDanceCookie } from "@/lib/server/session";
+import { errorResponse } from "@/lib/server/route-helpers";
+import { consumeRateLimit, requestIp } from "@/lib/server/rate-limit";
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   try {

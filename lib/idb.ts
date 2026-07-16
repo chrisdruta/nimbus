@@ -1,3 +1,5 @@
+import "client-only";
+
 /**
  * Minimal promise wrapper over IndexedDB — one database, one object store,
  * get/set/delete/keys. Everything is best-effort: any failure (private

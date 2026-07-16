@@ -4,15 +4,15 @@ import {
   BadRequestError,
   readJsonBody,
   requireSameOrigin,
-} from "@/lib/route-helpers";
+} from "@/lib/server/route-helpers";
 import { parseQueueTracks } from "@/lib/slipstream";
 import { SHARED_QUEUE_CAP } from "@/lib/shared-queue";
 import {
   getSession,
   startSession,
   stopSession,
-} from "@/lib/shared-session-store";
-import { mintSharedCapability } from "@/lib/shared-capability";
+} from "@/lib/server/shared-session-store";
+import { mintSharedCapability } from "@/lib/server/shared-capability";
 
 export const runtime = "nodejs";
 

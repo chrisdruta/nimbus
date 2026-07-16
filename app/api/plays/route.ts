@@ -1,5 +1,5 @@
-import { withUser } from "@/lib/route-helpers";
-import { getTrackPlays } from "@/lib/plays";
+import { withUser } from "@/lib/server/route-helpers";
+import { getTrackPlays } from "@/lib/server/plays";
 
 export const runtime = "nodejs";
 

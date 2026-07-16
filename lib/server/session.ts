@@ -1,3 +1,5 @@
+import "server-only";
+
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { getUserAuth } from "./db";

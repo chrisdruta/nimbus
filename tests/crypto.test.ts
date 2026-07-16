@@ -1,7 +1,7 @@
 import { describe, expect, test, beforeEach } from "bun:test";
 import { randomBytes } from "node:crypto";
 import { createCipheriv } from "node:crypto";
-import { decryptToken, encryptToken } from "../lib/crypto";
+import { decryptToken, encryptToken } from "../lib/server/crypto";
 
 beforeEach(() => {
   process.env.TOKEN_ENCRYPTION_KEY = randomBytes(32).toString("base64");

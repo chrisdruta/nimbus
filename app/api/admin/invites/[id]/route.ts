@@ -4,8 +4,8 @@ import {
   BadRequestError,
   positiveSafeInteger,
   requireSameOrigin,
-} from "@/lib/route-helpers";
-import { revokeInvite } from "@/lib/invites";
+} from "@/lib/server/route-helpers";
+import { revokeInvite } from "@/lib/server/invites";
 
 export const runtime = "nodejs";
 

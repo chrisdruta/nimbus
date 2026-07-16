@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { clearSession } from "@/lib/session";
-import { errorResponse, requireSameOrigin } from "@/lib/route-helpers";
+import { clearSession } from "@/lib/server/session";
+import { errorResponse, requireSameOrigin } from "@/lib/server/route-helpers";
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {

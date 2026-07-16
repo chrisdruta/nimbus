@@ -5,11 +5,11 @@ import {
   readJsonBody,
   requireSameOrigin,
   positiveSafeInteger,
-} from "@/lib/route-helpers";
+} from "@/lib/server/route-helpers";
 import { parseControl } from "@/lib/shared-queue";
-import { writeControl } from "@/lib/shared-session-store";
-import { verifySharedCapability } from "@/lib/shared-capability";
-import { ForbiddenError } from "@/lib/session";
+import { writeControl } from "@/lib/server/shared-session-store";
+import { verifySharedCapability } from "@/lib/server/shared-capability";
+import { ForbiddenError } from "@/lib/server/session";
 
 export const runtime = "nodejs";
 

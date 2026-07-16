@@ -1,3 +1,5 @@
+import "server-only";
+
 /**
  * DB accessors for shared slipstream sessions (server-only). The session
  * row is server-authoritative queue truth: reads are sql() one-shots,
@@ -9,8 +11,8 @@
 
 import { getPool, sql } from "./db";
 import { NotFoundError } from "./route-helpers";
-import { STALE_MS } from "./slipstream";
-import type { SharedControl, SharedQueueEntry } from "./shared-queue";
+import { STALE_MS } from "../slipstream";
+import type { SharedControl, SharedQueueEntry } from "../shared-queue";
 
 const STALE_SECS = STALE_MS / 1000;
 

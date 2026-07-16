@@ -6,17 +6,17 @@ import {
   readJsonBody,
   requireSameOrigin,
   positiveSafeInteger,
-} from "@/lib/route-helpers";
-import { sql } from "@/lib/db";
+} from "@/lib/server/route-helpers";
+import { sql } from "@/lib/server/db";
 import {
   addEntry,
   parseQueueOp,
   removeEntry,
   reorderEntries,
 } from "@/lib/shared-queue";
-import { mutateQueue } from "@/lib/shared-session-store";
-import { verifySharedCapability } from "@/lib/shared-capability";
-import { ForbiddenError } from "@/lib/session";
+import { mutateQueue } from "@/lib/server/shared-session-store";
+import { verifySharedCapability } from "@/lib/server/shared-capability";
+import { ForbiddenError } from "@/lib/server/session";
 
 export const runtime = "nodejs";
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { consumeRateLimit, RateLimitError } from "../lib/rate-limit";
+import { consumeRateLimit, RateLimitError } from "../lib/server/rate-limit";
 
 describe("rate limiter", () => {
   test("allows a bounded burst and reports the reset", () => {

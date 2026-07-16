@@ -1,6 +1,6 @@
-import { withAdmin } from "@/lib/route-helpers";
-import { getGlobalUsage, nextUtcMidnight, utcDayKey } from "@/lib/quota";
-import { getSettings } from "@/lib/settings";
+import { withAdmin } from "@/lib/server/route-helpers";
+import { getGlobalUsage, nextUtcMidnight, utcDayKey } from "@/lib/server/quota";
+import { getSettings } from "@/lib/server/settings";
 
 export const runtime = "nodejs";
 

@@ -1,3 +1,5 @@
+import "server-only";
+
 import { NextResponse, type NextRequest } from "next/server";
 import {
   requireAdmin,
@@ -11,7 +13,7 @@ import {
   InvalidCursorError,
   ProviderAuthError,
   TrackUnavailableError,
-} from "./provider";
+} from "../provider";
 import { QuotaExceededError } from "./quota";
 import { consumeRateLimit, RateLimitError } from "./rate-limit";
 

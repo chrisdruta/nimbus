@@ -1,11 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getProvider } from "@/lib/provider";
-import { encryptToken, tokenContext } from "@/lib/crypto";
-import { getUserByScId, upsertUser, type UpsertUserFields } from "@/lib/db";
-import { claimInviteAndCreateUser, InviteInvalidError } from "@/lib/invites";
-import { createSession, isOwner, readAndClearDanceCookie } from "@/lib/session";
-import { errorResponse } from "@/lib/route-helpers";
-import { consumeRateLimit, requestIp } from "@/lib/rate-limit";
+import { encryptToken, tokenContext } from "@/lib/server/crypto";
+import { getUserByScId, upsertUser, type UpsertUserFields } from "@/lib/server/db";
+import { claimInviteAndCreateUser, InviteInvalidError } from "@/lib/server/invites";
+import { createSession, isOwner, readAndClearDanceCookie } from "@/lib/server/session";
+import { errorResponse } from "@/lib/server/route-helpers";
+import { consumeRateLimit, requestIp } from "@/lib/server/rate-limit";
 
 export const runtime = "nodejs";
 

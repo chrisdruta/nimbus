@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getClaimableInvite } from "@/lib/invites";
-import { readSession } from "@/lib/session";
+import { getClaimableInvite } from "@/lib/server/invites";
+import { readSession } from "@/lib/server/session";
 import { headers } from "next/headers";
-import { consumeRateLimit, RateLimitError, requestIp } from "@/lib/rate-limit";
+import { consumeRateLimit, RateLimitError, requestIp } from "@/lib/server/rate-limit";
 
 export default async function InvitePage({
   params,

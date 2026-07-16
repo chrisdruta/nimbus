@@ -4,9 +4,9 @@ import {
   BadRequestError,
   NotFoundError,
   positiveSafeInteger,
-} from "@/lib/route-helpers";
-import { getSlipstream } from "@/lib/slipstream-store";
-import { mintSharedCapability } from "@/lib/shared-capability";
+} from "@/lib/server/route-helpers";
+import { getSlipstream } from "@/lib/server/slipstream-store";
+import { mintSharedCapability } from "@/lib/server/shared-capability";
 
 export const runtime = "nodejs";
 

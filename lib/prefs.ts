@@ -1,3 +1,5 @@
+import "client-only";
+
 /**
  * Tiny persisted-preference helpers (localStorage, JSON, best-effort).
  * Callers pass a validator so corrupted/stale values read as absent.

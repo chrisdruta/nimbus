@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { readSession } from "@/lib/session";
-import { getUserAuth } from "@/lib/db";
+import { readSession } from "@/lib/server/session";
+import { getUserAuth } from "@/lib/server/db";
 
 const AUTH_ERRORS: Record<string, string> = {
   not_invited: "nimbus is invite-only — ask Chris for an invite link",

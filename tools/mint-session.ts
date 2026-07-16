@@ -1,8 +1,10 @@
 // Dev tool: mint a local-dev nimbus_session cookie for the owner so browser
 // automation (playwright-cli) can exercise authed pages locally.
-// Requires .env sourced:  set -a && . ./.env && set +a && bun tools/mint-session.ts
+// Requires .env sourced (the react-server condition resolves the
+// `server-only` marker in lib/server to its empty module):
+//   set -a && . ./.env && set +a && bun --conditions=react-server tools/mint-session.ts
 import { SignJWT } from "jose";
-import { getUserByScId } from "../lib/db";
+import { getUserByScId } from "../lib/server/db";
 
 const SESSION_TTL_S = 7 * 24 * 60 * 60;
 

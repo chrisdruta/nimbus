@@ -1,3 +1,5 @@
+import "server-only";
+
 /**
  * DB accessors for slipstream presence (server-only). All single-statement
  * sql() one-shots — no transactions needed: the row is a last-writer-wins
@@ -14,9 +16,9 @@
  */
 
 import { sql } from "./db";
-import { STALE_MS, type Heartbeat } from "./slipstream";
-import type { QueueTrack } from "./queue";
-import type { SharedControl, SharedQueueEntry } from "./shared-queue";
+import { STALE_MS, type Heartbeat } from "../slipstream";
+import type { QueueTrack } from "../queue";
+import type { SharedControl, SharedQueueEntry } from "../shared-queue";
 
 const STALE_SECS = STALE_MS / 1000;
 

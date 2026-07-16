@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { isOwner, readSession } from "@/lib/session";
+import { isOwner, readSession } from "@/lib/server/session";
 import { AdminView } from "@/components/admin/AdminView";
 
 export default async function AdminPage() {

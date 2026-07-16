@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { readSession } from "@/lib/session";
-import { getUserAuth } from "@/lib/db";
+import { readSession } from "@/lib/server/session";
+import { getUserAuth } from "@/lib/server/db";
 import { ToastProvider } from "@/components/ui/Toast";
 import { PlayerProvider } from "@/components/player/PlayerProvider";
 import { AppShell } from "@/components/shell/AppShell";

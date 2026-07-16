@@ -38,7 +38,7 @@ bunx playwright-cli close
 
 - Screenshots and artifacts go to the scratchpad, never the repo
   (`.playwright/` and `.playwright-cli/` are gitignored except the config).
-- Authed pages: `set -a && . ./.env && set +a && bun tools/mint-session.ts`
+- Authed pages: `set -a && . ./.env && set +a && bun --conditions=react-server tools/mint-session.ts`
   prints a session JWT for the owner; set it with
   `bunx playwright-cli cookie-set nimbus_session <jwt>` after opening the app
   origin, then reload.
@@ -83,24 +83,24 @@ match the existing code.
 **Auth model.** OAuth 2.1 + PKCE; PKCE state (and any invite code) rides a
 signed, short-lived HttpOnly cookie — never the SoundCloud redirect. Production
 cookies use `__Host-`/`__Secure-` prefixes. Sessions are typed, issuer/audience-
-bound 7-day jose JWTs, but `requireUser()` (`lib/session.ts`) is
+bound 7-day jose JWTs, but `requireUser()` (`lib/server/session.ts`) is
 DB-backed per request so disabling/removing a user cuts them off on their next
 call. `OWNER_SC_USER_ID` identifies the owner/admin (there is no role column);
 membership otherwise comes from single-use invites claimed atomically under a
-row lock (`lib/invites.ts`). API routes wrap handlers in `withUser`/`withAdmin`
-(`lib/route-helpers.ts`), which own the error→status vocabulary (401/403/400/
+row lock (`lib/server/invites.ts`). API routes wrap handlers in `withUser`/`withAdmin`
+(`lib/server/route-helpers.ts`), which own the error→status vocabulary (401/403/400/
 422/429); throw the typed errors, don't hand-roll responses.
 
-**Tokens at rest.** Versioned AES-256-GCM blobs in Neon (`lib/crypto.ts`), with
-user/token-type AAD and a previous-key rotation window. SoundCloud
+**Tokens at rest.** Versioned AES-256-GCM blobs in Neon (`lib/server/crypto.ts`),
+with user/token-type AAD and a previous-key rotation window. SoundCloud
 refresh tokens are single-use, so rotation serializes under a `FOR UPDATE`
-row lock in `lib/tokens.ts` — copy that transaction pattern (via `getPool()`)
+row lock in `lib/server/tokens.ts` — copy that transaction pattern (via `getPool()`)
 for any multi-statement write; use the `sql()` Neon HTTP one-shot for
 everything else. No ORM; Postgres bigints arrive as strings — `Number()` them
 at the row-mapping boundary.
 
 **Quotas.** `POST /api/tracks/[id]/play` calls `consumePlayStart` _before_ the
-provider (one atomic INSERT…ON CONFLICT statement in `lib/quota.ts`). Every
+provider (one atomic INSERT…ON CONFLICT statement in `lib/server/quota.ts`). Every
 resolution attempt counts, including unavailable tracks, so invalid-track
 loops cannot become an unlimited provider request oracle. The client stops
 after five consecutive failures. The per-user guard is exact; the
@@ -109,6 +109,18 @@ between `app_settings.global_daily_play_limit` (default 12,000) and
 SoundCloud's 15,000/day client cap absorbs it. Do not "fix" this with a global
 lock row. `track_plays` tallies are recorded only after a successful
 resolution, best-effort (`.catch(() => {})`).
+
+**lib layering.** Server-side modules (DB, sessions, tokens, crypto, quotas,
+presence/session stores) live in `lib/server/` and start with
+`import "server-only"`, so importing one from a client bundle is a build-time
+error, not a silent leak; `lib/soundcloud/api.ts`/`auth.ts` carry the same
+marker (they hold OAuth secrets behind the provider seam, which stays
+type-only for client code). Browser-API modules (`lib/prefs.ts`, `lib/idb.ts`,
+`lib/artwork.ts`) are marked `import "client-only"`. Everything else in `lib/`
+stays flat and isomorphic-pure. New-module rule: touches the DB or secrets →
+`lib/server/` + marker; touches browser APIs → `client-only` marker; otherwise
+flat and pure. Bun tests stub `server-only` via the `tests/setup.ts` preload
+(`bunfig.toml`); scripts run with plain `bun` need `--conditions=react-server`.
 
 **Pure engines convention.** Domain logic lives in `lib/` as pure,
 deterministic, unit-tested functions; React/DOM stays in `components/`. The

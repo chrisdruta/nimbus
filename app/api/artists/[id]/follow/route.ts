@@ -1,11 +1,11 @@
 import { type NextRequest } from "next/server";
 import { getProvider } from "@/lib/provider";
-import { getValidAccessToken } from "@/lib/tokens";
+import { getValidAccessToken } from "@/lib/server/tokens";
 import {
   positiveSafeInteger,
   requireSameOrigin,
   withUser,
-} from "@/lib/route-helpers";
+} from "@/lib/server/route-helpers";
 
 export const runtime = "nodejs";
 

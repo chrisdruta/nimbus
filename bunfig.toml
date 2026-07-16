@@ -1,3 +1,6 @@
 [test]
 # Keep bun test away from legacy/src/App.test.js (dead CRA test).
 root = "tests"
+# Stub the server-only marker package (throws under bun's default
+# export condition; see tests/setup.ts).
+preload = ["./tests/setup.ts"]

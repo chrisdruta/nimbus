@@ -4,8 +4,8 @@ import {
   BadRequestError,
   readJsonBody,
   requireSameOrigin,
-} from "@/lib/route-helpers";
-import { updateSettings, type AppSettings } from "@/lib/settings";
+} from "@/lib/server/route-helpers";
+import { updateSettings, type AppSettings } from "@/lib/server/settings";
 
 export const runtime = "nodejs";
 

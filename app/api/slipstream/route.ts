@@ -4,9 +4,9 @@ import {
   BadRequestError,
   readJsonBody,
   requireSameOrigin,
-} from "@/lib/route-helpers";
+} from "@/lib/server/route-helpers";
 import { parseHeartbeat } from "@/lib/slipstream";
-import { upsertSlipstream } from "@/lib/slipstream-store";
+import { upsertSlipstream } from "@/lib/server/slipstream-store";
 import type { SharedWire } from "@/lib/shared-queue";
 
 export const runtime = "nodejs";

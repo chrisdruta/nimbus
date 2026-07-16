@@ -1,5 +1,5 @@
-import { withUser } from "@/lib/route-helpers";
-import { listActiveSlipstreams } from "@/lib/slipstream-store";
+import { withUser } from "@/lib/server/route-helpers";
+import { listActiveSlipstreams } from "@/lib/server/slipstream-store";
 
 export const runtime = "nodejs";
 

@@ -5,9 +5,9 @@ import {
   positiveSafeInteger,
   readJsonBody,
   requireSameOrigin,
-} from "@/lib/route-helpers";
-import { deleteUser, getUserById, setUserDisabled } from "@/lib/db";
-import { isOwner } from "@/lib/session";
+} from "@/lib/server/route-helpers";
+import { deleteUser, getUserById, setUserDisabled } from "@/lib/server/db";
+import { isOwner } from "@/lib/server/session";
 
 export const runtime = "nodejs";
 

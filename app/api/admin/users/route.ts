@@ -1,7 +1,7 @@
-import { withAdmin } from "@/lib/route-helpers";
-import { listUsersWithUsage } from "@/lib/db";
-import { utcDayKey } from "@/lib/quota";
-import { isOwner } from "@/lib/session";
+import { withAdmin } from "@/lib/server/route-helpers";
+import { listUsersWithUsage } from "@/lib/server/db";
+import { utcDayKey } from "@/lib/server/quota";
+import { isOwner } from "@/lib/server/session";
 
 export const runtime = "nodejs";
 

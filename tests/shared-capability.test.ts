@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   mintSharedCapability,
   verifySharedCapability,
-} from "../lib/shared-capability";
+} from "../lib/server/shared-capability";
 
 const originalSecret = process.env.SESSION_SECRET;
 

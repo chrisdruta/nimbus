@@ -1,8 +1,8 @@
 import { getProvider } from "@/lib/provider";
-import { getValidAccessToken } from "@/lib/tokens";
-import { withUser } from "@/lib/route-helpers";
-import { isOwner } from "@/lib/session";
-import { updateUserProfile } from "@/lib/db";
+import { getValidAccessToken } from "@/lib/server/tokens";
+import { withUser } from "@/lib/server/route-helpers";
+import { isOwner } from "@/lib/server/session";
+import { updateUserProfile } from "@/lib/server/db";
 
 export const runtime = "nodejs";
 
