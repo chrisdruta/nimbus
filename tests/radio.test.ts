@@ -2,14 +2,17 @@ import { describe, expect, test } from "bun:test";
 import {
   RADIO_LOW_WATER,
   RADIO_MAX_TRACKS,
+  canAutoContinue,
   filterFresh,
   nextSeed,
   radioSeedOf,
   radioSourceId,
   remainingPlayable,
+  seedStation,
   shouldRefill,
 } from "../lib/radio";
-import { createQueue, next, type QueueState } from "../lib/queue";
+import { createQueue, integrate, next, type QueueState } from "../lib/queue";
+import { CAPS, type SourceKind } from "../lib/sources";
 
 /** Hand-built state so boundaries are explicit. */
 function state(overrides: Partial<QueueState>): QueueState {
@@ -91,6 +94,60 @@ describe("nextSeed", () => {
     const q = state({ sourceId: "radio:track:7" });
     expect(nextSeed(q, new Set())).toBe(7);
     expect(nextSeed(q, new Set([7]))).toBeNull();
+  });
+});
+
+describe("canAutoContinue", () => {
+  test("every source kind has an explicit auto-continue verdict", () => {
+    // Total over SourceKind: adding a kind forces a decision here.
+    const expected: Record<SourceKind, boolean> = {
+      likes: true,
+      playlist: true,
+      feed: true,
+      search: true,
+      artist: true,
+      radio: false, // self-refills
+      shared: false, // not yours to extend
+      slipstream: false,
+      "slipstream-shared": false,
+    };
+    for (const kind of Object.keys(CAPS) as SourceKind[]) {
+      expect(canAutoContinue(kind)).toBe(expected[kind]);
+    }
+  });
+});
+
+describe("seedStation", () => {
+  test("builds a radio queue with the seed current, repeat off", () => {
+    const q = seedStation(42, "artist-spaced");
+    expect(q.sourceId).toBe("radio:track:42");
+    expect(q.order).toEqual([42]);
+    expect(q.position).toBe(0);
+    expect(q.repeat).toBe("off");
+    expect(q.shuffled).toBe(false);
+    expect(q.shuffleMode).toBe("artist-spaced");
+  });
+
+  test("advance after refill lands on the first related track, not the seed", () => {
+    const grown = integrate(seedStation(1, "classic"), [2, 3]);
+    const { state, ended } = next(grown);
+    expect(ended).toBe(false);
+    expect(state.order[state.position]).toBe(2);
+    expect(state.history).toEqual([1]); // seed consumed, chainable
+  });
+
+  test("a dry station stays stopped on the seed", () => {
+    const { state, ended } = next(seedStation(1, "classic"));
+    expect(ended).toBe(true);
+    expect(state.position).toBe(0);
+  });
+
+  test("seed chaining works like a user-started station", () => {
+    const grown = integrate(seedStation(1, "classic"), [2, 3]);
+    const q = next(grown).state; // playing 2, history [1]
+    expect(nextSeed(q, new Set())).toBe(2); // current
+    expect(nextSeed(q, new Set([2]))).toBe(1); // history / original seed
+    expect(nextSeed(q, new Set([2, 1]))).toBeNull();
   });
 });
 

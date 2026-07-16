@@ -29,10 +29,6 @@ project 30 days) trends toward its cap in the dashboard.
 - **Slipstream follow-ups** — private-listening opt-out toggle (one
   `users` column + a `WHERE`, the heartbeat POST early-returns); preview
   badge for `access: "preview"` tracks (30s snippets via the API).
-- **Collection auto-continue** — when a likes/playlist queue ends (repeat
-  off), optionally flow into radio mode seeded from the last track
-  (pref-gated, off by default). All the radio plumbing from M8 reuses;
-  this is a small PlayerProvider change.
 - **Reposter names in the feed** — `/me/feed/tracks` exposes reposters
   only as bare URNs (`soundcloud:users:N`); showing names would need a
   cached `/users/{urn}` lookup per reposter. Skipped in M8 as not worth
@@ -69,6 +65,37 @@ OffscreenCanvas worker → WebGL/WebGPU → only then WASM+SIMD. Staying
 plain-web also keeps a future Cast receiver a plain page.
 
 ## Shipped
+
+### Collection auto-continue (2026-07-16)
+
+When a local collection queue ends (repeat off), the player can flow into
+radio seeded from the track that just finished — a "continue with radio"
+switch on the queue panel's up-next row, pref-gated
+(`nimbus:pref:autoRadio`), off by default. Applies to all self-owned
+collection kinds (likes/playlist/feed/search/artist —
+`AUTO_CONTINUE_KINDS`/`canAutoContinue` in `lib/radio.ts`); radio
+self-refills and shared/slipstream queues aren't ours to extend, and the
+switch hides for those. The seed is **not replayed**: a new pure
+`seedStation()` builds the station with the seed at position 0 already
+consumed, `advance()` switches queues, awaits `refillRadio()` (all M8
+machinery reused — shared in-flight promise, seed retries, tried-seed
+set), then advances onto the first *related* track; the seed lands in
+history so seed chaining works exactly as in a user-started station.
+`startRadio` now uses the same constructor. A dry or transiently failed
+refill restores the finished collection queue untouched (plus a quiet
+toast when genuinely dry), and a fail-streak guard limits auto-continue
+to clean track ends, so a queue that ends on a broken track can't seed a
+station from it.
+
+Validation: 380 tests green (5 new: total-over-SourceKind eligibility
+map, station shape, no-replay advance, dry-station stop, seed-chain
+parity); typecheck clean. Live playwright-cli pass, 2 plays total:
+toggle off by default → last playlist track ended at "end of queue"
+with no radio; toggle on → end transitioned onto a related track (not a
+replay) with the `radio · {seed}` header and a 38-track station
+persisted (seed consumed at position 0, position 1 playing), exactly
+one play consumed by the transition; switch hidden on the radio queue;
+pref and paused radio queue survived reload.
 
 ### Fourier scene: 2D spatial-frequency viz (2026-07-15)
 

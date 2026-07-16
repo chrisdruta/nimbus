@@ -37,9 +37,10 @@ import {
 } from "@/lib/queue";
 import { capsOf, sourceKindOf, type SourceCapabilities } from "@/lib/sources";
 import {
+  canAutoContinue,
   filterFresh,
   nextSeed,
-  radioSourceId,
+  seedStation,
   shouldRefill,
   RADIO_SEED_ATTEMPTS,
 } from "@/lib/radio";
@@ -184,6 +185,8 @@ export interface PlayerState {
   volume: number;
   /** Volume leveling (per-track loudness normalization) enabled. */
   leveling: boolean;
+  /** When a local collection queue ends, continue with radio from the last track. */
+  autoRadio: boolean;
   /** Fullscreen stage (art + viz scenes) visibility. */
   stageOpen: boolean;
   queue: QueueState | null;
@@ -221,6 +224,8 @@ export interface PlayerActions {
   setVolume(v: number): void;
   /** Toggle volume leveling; off restores the untouched signal path. */
   setLeveling(on: boolean): void;
+  /** Toggle auto-continue into radio when a collection queue ends. */
+  setAutoRadio(on: boolean): void;
   openStage(): void;
   closeStage(): void;
   getMeta(trackId: number): QueueTrack | undefined;
@@ -309,6 +314,7 @@ export function PlayerProvider({
   const [playing, setPlaying] = useState(false);
   const [volume, setVolumeState] = useState(1);
   const [leveling, setLevelingState] = useState(true);
+  const [autoRadio, setAutoRadioState] = useState(false);
   const [stageOpen, setStageOpen] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -334,6 +340,8 @@ export function PlayerProvider({
   const radioTriedSeedsRef = useRef<Set<number>>(new Set());
   /** Every seed candidate is exhausted — the station is dry. */
   const radioEndedRef = useRef(false);
+  /** Pref mirror for advance(): continue ended collections with radio. */
+  const autoRadioRef = useRef(false);
   const playsRef = useRef<
     Map<number, { playCount: number; lastPlayedAt: number }>
   >(new Map());
@@ -458,6 +466,11 @@ export function PlayerProvider({
       readPref("leveling", (v): v is boolean => typeof v === "boolean") ?? true;
     levelingRef.current = storedLeveling;
     setLevelingState(storedLeveling);
+    const storedAutoRadio =
+      readPref("autoRadio", (v): v is boolean => typeof v === "boolean") ??
+      false;
+    autoRadioRef.current = storedAutoRadio;
+    setAutoRadioState(storedAutoRadio);
     loudnessMapRef.current = loadLoudnessMap(
       readPref("loudness", isLoudnessCachePayload),
     );
@@ -884,7 +897,8 @@ export function PlayerProvider({
     setQueue(state);
     if (ended) {
       setPlaying(false);
-      if (sourceKindOf(state.sourceId) === "radio") {
+      const kind = sourceKindOf(state.sourceId);
+      if (kind === "radio") {
         // Normally the low-water refill keeps this unreachable; hitting it
         // means the fetch lost the race (or the station is dry). Wait it
         // out and step forward if the queue grew.
@@ -894,7 +908,44 @@ export function PlayerProvider({
             toast("radio ran out of related tracks");
           }
         });
+        return;
       }
+      // Collection ended (repeat off — "all" wraps, "one" never ends).
+      // Optionally flow into radio seeded from the track that just finished,
+      // without replaying it: the station starts with the seed already
+      // consumed, so the post-refill advance lands on the first related
+      // track. A streak > 0 means we got here via a stream error, not a
+      // clean end — don't seed a station from a broken track.
+      if (
+        !autoRadioRef.current ||
+        !canAutoContinue(kind) ||
+        failStreakRef.current > 0 ||
+        followRef.current ||
+        hostSessionRef.current
+      ) {
+        return;
+      }
+      const seedId = currentTrackId(state);
+      const seed = seedId !== null ? metaRef.current.get(seedId) : undefined;
+      if (!seed) return;
+      pendingSeekRef.current = null;
+      radioTriedSeedsRef.current = new Set();
+      radioEndedRef.current = false;
+      const station = seedStation(seed.id, state.shuffleMode);
+      setQueue(station);
+      void refillRadio().then((grew) => {
+        if (grew) {
+          toast(`radio · ${seed.title}`);
+          advanceRef.current();
+          return;
+        }
+        // Dry (or transient fetch failure): restore the finished queue
+        // untouched, unless the user already moved on to something else.
+        if (queueRef.current?.sourceId === station.sourceId) setQueue(state);
+        if (radioEndedRef.current) {
+          toast("couldn't continue with radio — no related tracks");
+        }
+      });
       return;
     }
     const id = currentTrackId(state);
@@ -1617,10 +1668,10 @@ export function PlayerProvider({
         metaRef.current.set(track.id, track);
         // The seed plays immediately; the refill machinery fills in the
         // station behind it.
-        const q = createQueue(radioSourceId(track.id), [track.id], {
-          startTrackId: track.id,
-          shuffleMode: queueRef.current?.shuffleMode ?? "classic",
-        });
+        const q = seedStation(
+          track.id,
+          queueRef.current?.shuffleMode ?? "classic",
+        );
         setQueue(q);
         void resolveAndPlay(track.id);
         void refillRadio();
@@ -1691,6 +1742,12 @@ export function PlayerProvider({
           loudnessDb(levelerRef.current) ??
           (id !== null ? loudnessMapRef.current.get(id) : undefined);
         if (known != null) applyLevelerGain(gainDbFor(known), LEVELER_RAMP_S);
+      },
+
+      setAutoRadio(on) {
+        autoRadioRef.current = on;
+        setAutoRadioState(on);
+        writePref("autoRadio", on);
       },
 
       openStage: () => setStageOpen(true),
@@ -1900,6 +1957,7 @@ export function PlayerProvider({
       repeat: queue?.repeat ?? "off",
       volume,
       leveling,
+      autoRadio,
       stageOpen,
       queue,
       caps: capsOf(
@@ -1912,7 +1970,17 @@ export function PlayerProvider({
       slipstream,
       shared,
     }),
-    [current, playing, queue, shared, slipstream, volume, leveling, stageOpen],
+    [
+      current,
+      playing,
+      queue,
+      shared,
+      slipstream,
+      volume,
+      leveling,
+      autoRadio,
+      stageOpen,
+    ],
   );
 
   const refs = useMemo<PlayerRefs>(() => ({ audioRef, analyserRef }), []);

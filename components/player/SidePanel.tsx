@@ -10,7 +10,8 @@ import {
 } from "@/components/ui/icons";
 import { formatDuration } from "@/lib/format";
 import { currentTrackId, type QueueTrack } from "@/lib/queue";
-import { radioSeedOf } from "@/lib/radio";
+import { canAutoContinue, radioSeedOf } from "@/lib/radio";
+import { sourceKindOf } from "@/lib/sources";
 import type { SharedQueueEntry } from "@/lib/shared-queue";
 import type { FeedRow } from "@/components/slipstream/useSlipstreamFeed";
 import { usePlayerActions, usePlayerState } from "./PlayerProvider";
@@ -243,8 +244,16 @@ export function SidePanel({
   feed: FeedRow[];
   you: number | null;
 }) {
-  const { current, shuffled, shuffleMode, caps, slipstream, shared, queue } =
-    usePlayerState();
+  const {
+    current,
+    shuffled,
+    shuffleMode,
+    caps,
+    slipstream,
+    shared,
+    queue,
+    autoRadio,
+  } = usePlayerState();
   const actions = usePlayerActions();
   const upNext = actions.upcomingTracks(40);
   const hostName = slipstream?.host.username ?? "member";
@@ -264,6 +273,11 @@ export function SidePanel({
             ? "up next · shuffled"
             : `up next · shuffled (${shuffleMode})`
           : "up next";
+  const showAutoRadio =
+    !slipstream &&
+    !shared &&
+    queue !== null &&
+    canAutoContinue(sourceKindOf(queue.sourceId));
   // The queue engine still holds the parked local queue while following.
   const parkedId = slipstream && queue ? currentTrackId(queue) : null;
   const parked = parkedId !== null ? actions.getMeta(parkedId) : undefined;
@@ -347,7 +361,22 @@ export function SidePanel({
           </p>
         ) : (
           <>
-            <p className="px-2 py-1 pt-3 text-xs text-muted">{upNextLabel}</p>
+            <div className="flex items-center justify-between gap-2 px-2 py-1 pt-3">
+              <p className="text-xs text-muted">{upNextLabel}</p>
+              {showAutoRadio && (
+                <button
+                  role="switch"
+                  aria-checked={autoRadio}
+                  title="when the queue ends, keep going with related tracks"
+                  onClick={() => actions.setAutoRadio(!autoRadio)}
+                  className={`shrink-0 cursor-pointer text-xs transition ${
+                    autoRadio ? "text-accent" : "text-muted hover:text-white"
+                  }`}
+                >
+                  continue with radio
+                </button>
+              )}
+            </div>
             {(shared ? shared.entries.length : upNext.length) === 0 && (
               <p className="px-2 py-2 text-sm text-muted">
                 {shared

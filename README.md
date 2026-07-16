@@ -31,7 +31,8 @@ always credit and link back to their creator and SoundCloud.
   per-track play history).
 - **Track radio**: start an endless station from any track — related tracks
   queue up behind the seed and the station keeps growing, re-seeded from
-  whatever played last.
+  whatever played last. Optionally, any queue you built flows into radio
+  when it ends ("continue with radio" on the queue panel, off by default).
 - **Feed**: recent uploads and reposts from the people you follow, straight
   into the same tiles, queue, and radio affordances.
 - **Search**: debounced full-catalog search for tracks and artists, with

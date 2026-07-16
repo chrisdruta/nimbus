@@ -7,7 +7,13 @@
  * deterministic and unit-tested.
  */
 
-import { currentTrackId, type QueueState } from "./queue";
+import {
+  createQueue,
+  currentTrackId,
+  type QueueState,
+  type ShuffleMode,
+} from "./queue";
+import type { SourceKind } from "./sources";
 
 /** Refill when this few playable tracks remain ahead of the position. */
 export const RADIO_LOW_WATER = 5;
@@ -18,6 +24,37 @@ export const RADIO_SEED_ATTEMPTS = 3;
 
 export function radioSourceId(seedTrackId: number): string {
   return `radio:track:${seedTrackId}`;
+}
+
+/**
+ * Local, self-owned collection kinds that may flow into radio when they end.
+ * Radio self-refills; shared/slipstream queues aren't ours to extend.
+ */
+export const AUTO_CONTINUE_KINDS: ReadonlySet<SourceKind> = new Set([
+  "likes",
+  "playlist",
+  "feed",
+  "search",
+  "artist",
+]);
+
+export function canAutoContinue(kind: SourceKind): boolean {
+  return AUTO_CONTINUE_KINDS.has(kind);
+}
+
+/**
+ * A fresh station: seed at position 0, treated as already playing/consumed.
+ * startRadio resolves the seed immediately; auto-continue instead refills and
+ * advances past it, since the seed just finished in the old queue.
+ */
+export function seedStation(
+  seedTrackId: number,
+  shuffleMode: ShuffleMode,
+): QueueState {
+  return createQueue(radioSourceId(seedTrackId), [seedTrackId], {
+    startTrackId: seedTrackId,
+    shuffleMode,
+  });
 }
 
 /** The station's original seed track id, or null for non-radio sources. */
