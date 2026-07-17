@@ -68,6 +68,24 @@ plain-web also keeps a future Cast receiver a plain page.
 
 ## Shipped
 
+### Compact desktop tier — layout re-centering (2026-07-17)
+
+The sizing system was re-centered on Chris's real daily viewport
+(~1280x650): Tailwind's `xl:` fired at exactly 1280, so the smallest
+daily window got the roomiest chrome. Now md→2xl is the compact tier
+(sidebar 240 + queue 288 → 752px content column at 1280) and roomy
+sizing starts at `2xl:` (1536+). With it: slim hero bands (96px art,
+inline actions — 6 list rows visible at 650px height instead of 2),
+media bar h-20 with a wider title column (long titles no longer
+truncate at 1280), list view capped at 62rem on wide screens
+(`--container-list`), stage art reserves asymmetric chrome clearance
+and scene canvases get insets off the media-bar border. Also fixed a
+real overflow bug: the shell row needed `min-w-0` as a grid item or
+nowrap titles grew the document past the viewport (1474px at 1280).
+Validated with playwright screenshots at 1280x650, 2560x1440, and
+768px (overflow assertion `scrollWidth === innerWidth` on every page,
+queue open, list view).
+
 ### Nonce CSP + preview badge (2026-07-17)
 
 Two deferred items closed together.
