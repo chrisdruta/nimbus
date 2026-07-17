@@ -39,6 +39,42 @@ const stage = (s: string) =>
     window as unknown as { __nimbusCastStage?: (s: string) => void }
   ).__nimbusCastStage?.(s);
 
+/** CanvasRenderingContext2D.roundRect is Chrome 99+ — the Cast runtime
+ * (~85-93) lacks it and the piano scene throws. Numbers-only polyfill
+ * of the spec's radius shorthand; no-op where native exists. */
+function polyfillRoundRect() {
+  const proto = window.CanvasRenderingContext2D?.prototype as
+    | (CanvasRenderingContext2D & { roundRect?: unknown })
+    | undefined;
+  if (!proto || typeof proto.roundRect === "function") return;
+  proto.roundRect = function (
+    this: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    radii: number | number[] = 0,
+  ) {
+    const list = (Array.isArray(radii) ? radii : [radii]).map((r) =>
+      Math.max(0, Math.min(Number(r) || 0, w / 2, h / 2)),
+    );
+    const [tl, tr, br, bl] =
+      list.length === 1
+        ? [list[0], list[0], list[0], list[0]]
+        : list.length === 2
+          ? [list[0], list[1], list[0], list[1]]
+          : list.length === 3
+            ? [list[0], list[1], list[2], list[1]]
+            : [list[0] ?? 0, list[1] ?? 0, list[2] ?? 0, list[3] ?? 0];
+    this.moveTo(x + tl, y);
+    this.arcTo(x + w, y, x + w, y + h, tr);
+    this.arcTo(x + w, y + h, x, y + h, br);
+    this.arcTo(x, y + h, x, y, bl);
+    this.arcTo(x, y, x + w, y, tl);
+    this.closePath();
+  };
+}
+
 type Mode =
   | "boot"
   /** ?debug=1 — CAF stubbed; the panel injects messages by hand. */
@@ -297,6 +333,7 @@ export function ReceiverApp() {
   // the custom channel.
   useEffect(() => {
     stage("boot:react");
+    polyfillRoundRect();
     // The page's inline script runs before the probe divs are parsed —
     // paint the UA (plus a CSS capability readout: the runtime masks its
     // Chrome version, and the day these flip to y the /cast surface can
@@ -531,6 +568,7 @@ export function ReceiverApp() {
                   visual={visual}
                   maxFps={TV_PROFILE.maxFps}
                   fixedDpr={TV_PROFILE.dpr}
+                  lowPower
                   style={{ height: "100%", width: "100%" }}
                 />
               </div>

@@ -49,12 +49,14 @@ export function createSpectrumBarsScene(): Scene {
       g.clearRect(0, 0, width, height);
 
       // Beat bloom: a soft glow rising from the bottom, decaying fast.
-      // Pulses on the predicted tempo grid when it's confident.
+      // Pulses on the predicted tempo grid when it's confident. A
+      // full-canvas radial fill per frame — the single most expensive op
+      // here, so low-power hosts skip it.
       const pulse = beatPulse(f, prevPhase);
       prevPhase = pulse.phase;
       if (pulse.fire) beatGlow = Math.min(1, beatGlow + 0.08 * pulse.intensity * 10);
       beatGlow *= Math.exp(-f.dt / 0.15);
-      if (beatGlow > 0.005) {
+      if (beatGlow > 0.005 && !sc.lowPower) {
         const glow = g.createRadialGradient(
           width / 2, height, 0,
           width / 2, height, height * 0.9,

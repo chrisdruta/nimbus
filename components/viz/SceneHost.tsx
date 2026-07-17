@@ -28,6 +28,7 @@ export function SceneHost({
   trackShape,
   maxFps,
   fixedDpr,
+  lowPower,
   className = "",
   style,
 }: {
@@ -45,6 +46,8 @@ export function SceneHost({
   maxFps?: number;
   /** TV profile: pin DPR (1080p panels upscale fine at half the pixels). */
   fixedDpr?: number;
+  /** TV profile: scenes skip their most expensive garnish. */
+  lowPower?: boolean;
   className?: string;
   style?: CSSProperties;
 }) {
@@ -86,13 +89,14 @@ export function SceneHost({
       g,
       width: canvas.width,
       height: canvas.height,
-      dpr: window.devicePixelRatio || 1,
+      dpr: fixedDpr ?? (window.devicePixelRatio || 1),
+      lowPower,
     };
     scene.init(sc);
     scene.resize(sc); // canvas is already sized; give layout-derived state
     sceneRef.current = scene;
     return () => scene.dispose();
-  }, [scene]);
+  }, [scene, fixedDpr, lowPower]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -115,7 +119,8 @@ export function SceneHost({
       g,
       width: canvas.width,
       height: canvas.height,
-      dpr: window.devicePixelRatio || 1,
+      dpr: fixedDpr ?? (window.devicePixelRatio || 1),
+      lowPower,
     };
 
     const resize = () => {
@@ -187,7 +192,7 @@ export function SceneHost({
       observer.disconnect();
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [analyserRef, fixedDpr]);
+  }, [analyserRef, fixedDpr, lowPower]);
 
   return <canvas ref={canvasRef} className={className} style={style} />;
 }

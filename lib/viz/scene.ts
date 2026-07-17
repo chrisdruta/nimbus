@@ -32,6 +32,9 @@ export interface SceneContext {
   width: number;
   height: number;
   dpr: number;
+  /** Weak-GPU host (the cast receiver): scenes skip their most expensive
+   * garnish — full-canvas gradient fills, multi-pass glow strokes. */
+  lowPower?: boolean;
   /**
    * Resolved visual settings for the active scene (lib/viz/settings.ts).
    * Scenes read these per frame — live slider feedback — and each scene

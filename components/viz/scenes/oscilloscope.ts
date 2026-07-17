@@ -72,10 +72,11 @@ export function createOscilloscopeScene(): Scene {
       }
 
       // Layered glow — far cheaper than shadowBlur. Strength scales with
-      // the glow setting; zero skips the halo passes entirely.
+      // the glow setting; zero skips the halo passes entirely, as do
+      // low-power hosts (two extra wide strokes of a 1024-point path).
       g.lineJoin = "round";
       g.lineCap = "round";
-      if (s.glow > 0.01) {
+      if (s.glow > 0.01 && !sc.lowPower) {
         g.strokeStyle = `rgba(${r}, ${gr}, ${b}, ${0.2 * s.glow})`;
         g.lineWidth = 9 * dpr * (0.6 + 0.7 * s.glow);
         g.stroke(path);
