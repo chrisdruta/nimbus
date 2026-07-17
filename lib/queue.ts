@@ -335,6 +335,39 @@ export function setRepeat(q: QueueState, mode: RepeatMode): QueueState {
 }
 
 /**
+ * Non-destructive enqueue: put trackId right after the current position
+ * ("next") or at the tail ("last"). Order stays duplicate-free — an id
+ * already present moves instead of duplicating (a played occurrence is
+ * consumed, adjusting position so the current track never changes). An
+ * unplayable id is cleared: an explicit re-queue is a retry request. A
+ * foreign id also joins sourceOrder (like integrate's fresh ids) so
+ * un-shuffling doesn't drop it; the next full-collection reconcile still
+ * drops foreign ids — enqueue is session-scoped by design.
+ */
+export function enqueue(
+  q: QueueState,
+  trackId: number,
+  where: "next" | "last",
+): QueueState {
+  if (currentTrackId(q) === trackId) return q;
+  const removedIdx = q.order.indexOf(trackId);
+  const order = q.order.filter((id) => id !== trackId);
+  const position =
+    removedIdx !== -1 && removedIdx < q.position ? q.position - 1 : q.position;
+  const at = where === "next" ? position + 1 : order.length;
+  order.splice(at, 0, trackId);
+  return {
+    ...q,
+    order,
+    position,
+    sourceOrder: q.sourceOrder.includes(trackId)
+      ? q.sourceOrder
+      : [...q.sourceOrder, trackId],
+    unplayable: q.unplayable.filter((id) => id !== trackId),
+  };
+}
+
+/**
  * Toggle shuffle. Turning it on reshuffles the whole collection with a new
  * seed, keeping the current track first (unless keepCurrentFirst=false);
  * turning it off restores ascending source order around the current track.

@@ -3,6 +3,7 @@ import {
   clearQueue,
   createQueue,
   currentTrackId,
+  enqueue,
   integrate,
   jumpTo,
   loadQueue,
@@ -233,6 +234,84 @@ describe("integrate", () => {
     expect([...merged.order].sort((a, b) => a - b)).toEqual(
       [...IDS, 60, 70].sort((a, b) => a - b),
     );
+  });
+});
+
+describe("enqueue", () => {
+  test("foreign id lands at the tail and joins sourceOrder", () => {
+    const q = createQueue("likes", IDS, { startTrackId: 30 });
+    const r = enqueue(q, 99, "last");
+    expect(r.order).toEqual([...IDS, 99]);
+    expect(r.sourceOrder).toEqual([...IDS, 99]);
+    expect(currentTrackId(r)).toBe(30);
+  });
+
+  test("foreign id lands right after the current track", () => {
+    const q = createQueue("likes", IDS, { startTrackId: 30 });
+    const r = enqueue(q, 99, "next");
+    expect(r.order).toEqual([10, 20, 30, 99, 40, 50]);
+    expect(currentTrackId(r)).toBe(30);
+  });
+
+  test("id from the unplayed remainder moves without duplicating", () => {
+    const q = createQueue("likes", IDS, { startTrackId: 20 });
+    const r = enqueue(q, 50, "next");
+    expect(r.order).toEqual([10, 20, 50, 30, 40]);
+    expect(r.order.filter((id) => id === 50)).toHaveLength(1);
+    expect(currentTrackId(r)).toBe(20);
+  });
+
+  test("played id is consumed and position repaired", () => {
+    let q = createQueue("likes", IDS, { startTrackId: 10 });
+    q = next(q).state;
+    q = next(q).state; // on 30, played [10, 20]
+    const r = enqueue(q, 10, "next");
+    expect(r.order).toEqual([20, 30, 10, 40, 50]);
+    expect(currentTrackId(r)).toBe(30);
+    expect(r.order.filter((id) => id === 10)).toHaveLength(1);
+  });
+
+  test("enqueuing the current track is a no-op", () => {
+    const q = createQueue("likes", IDS, { startTrackId: 30 });
+    expect(enqueue(q, 30, "next")).toBe(q);
+    expect(enqueue(q, 30, "last")).toBe(q);
+  });
+
+  test("nothing selected: next inserts at the head", () => {
+    const q = createQueue("likes", IDS); // position -1
+    const r = enqueue(q, 99, "next");
+    expect(r.order[0]).toBe(99);
+    expect(r.position).toBe(-1);
+  });
+
+  test("re-queuing an unplayable id clears the mark", () => {
+    let q = createQueue("likes", IDS, { startTrackId: 10 });
+    q = markUnplayable(q, 40);
+    const r = enqueue(q, 40, "next");
+    expect(r.unplayable).not.toContain(40);
+    expect(upcoming(r, 1)).toEqual([40]);
+  });
+
+  test("last on the current tail keeps order values", () => {
+    const q = createQueue("likes", IDS, { startTrackId: 10 });
+    const r = enqueue(q, 50, "last");
+    expect(r.order).toEqual(IDS);
+  });
+
+  test("shuffle bookkeeping is untouched", () => {
+    const q = createQueue("likes", IDS, { shuffle: true, startTrackId: 30 });
+    const r = enqueue(q, 99, "next");
+    expect(r.shuffled).toBe(true);
+    expect(r.seed).toBe(q.seed);
+    expect(r.shuffleMode).toBe(q.shuffleMode);
+    expect(r.history).toEqual(q.history);
+  });
+
+  test("foreign id survives un-shuffling", () => {
+    const q = createQueue("likes", IDS, { shuffle: true, startTrackId: 30 });
+    const r = toggleShuffle(enqueue(q, 99, "next"));
+    expect(r.order).toContain(99);
+    expect(currentTrackId(r)).toBe(30);
   });
 });
 
