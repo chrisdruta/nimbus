@@ -42,9 +42,13 @@ const CHROME_HIDE_MS = 2500;
  * Scenes paint on transparency; this owns the backdrop layers beneath.
  */
 export function StageView() {
-  const { stageOpen, current } = usePlayerState();
+  const { stageOpen, current, cast } = usePlayerState();
   const actions = usePlayerActions();
   const theme = useVizTheme(current?.artworkUrl ?? null);
+  // While casting the local analyser is silent — scenes would just paint
+  // stillness. The stage falls back to art mode with a quiet caption;
+  // the receiver renders the show on the TV instead.
+  const casting = cast?.status === "connected";
 
   const [mode, setMode] = useState<StageMode>(
     () =>
@@ -255,13 +259,15 @@ export function StageView() {
           url={current?.artworkUrl ?? null}
           durationMs={1200}
           className={`scale-125 object-cover blur-3xl saturate-125 ${
-            mode === "art" ? "brightness-[0.55]" : "brightness-[0.35]"
+            mode === "art" || casting ? "brightness-[0.55]" : "brightness-[0.35]"
           }`}
         />
       </div>
-      {mode !== "art" && <div className="absolute inset-0 bg-black/40" />}
+      {mode !== "art" && !casting && (
+        <div className="absolute inset-0 bg-black/40" />
+      )}
 
-      {mode === "art" ? (
+      {mode === "art" || casting ? (
         // Chrome clearance is asymmetric: the title block needs ~96px up
         // top, the mode label ~56px below. The art centers in what's left.
         <div className="absolute inset-0 flex items-center justify-center pt-24 pb-14">
@@ -379,8 +385,15 @@ export function StageView() {
         </div>
       )}
 
+      {/* while casting: the show is on the TV, this side stays quiet */}
+      {casting && (
+        <p className="pointer-events-none absolute inset-x-0 bottom-[10%] text-center text-lg text-muted [text-shadow:0_1px_10px_rgba(0,0,0,0.85)]">
+          casting to {cast?.deviceName ?? "tv"}
+        </p>
+      )}
+
       {/* scene-name flash on mode switch (skipped under reduced motion) */}
-      {flash && (
+      {flash && !casting && (
         <div
           key={flash.n}
           className="pointer-events-none absolute inset-x-0 bottom-[24%] hidden text-center motion-safe:block"
@@ -392,21 +405,25 @@ export function StageView() {
       )}
 
       {/* mode switching lives in the bottom-left corner */}
-      <div className={`absolute bottom-6 left-6 ${chromeDrift}`}>
-        <ScenePicker active={mode} onSelect={selectMode} />
-      </div>
+      {!casting && (
+        <div className={`absolute bottom-6 left-6 ${chromeDrift}`}>
+          <ScenePicker active={mode} onSelect={selectMode} />
+        </div>
+      )}
 
-      <button
-        onClick={() => {
-          setTuneOpen((v) => !v);
-          pokeChrome();
-        }}
-        className={`absolute right-6 bottom-6 cursor-pointer text-sm [text-shadow:0_1px_10px_rgba(0,0,0,0.85)] hover:text-white ${
-          tuneOpen ? "text-white" : "text-muted"
-        } ${chromeDrift}`}
-      >
-        tune
-      </button>
+      {!casting && (
+        <button
+          onClick={() => {
+            setTuneOpen((v) => !v);
+            pokeChrome();
+          }}
+          className={`absolute right-6 bottom-6 cursor-pointer text-sm [text-shadow:0_1px_10px_rgba(0,0,0,0.85)] hover:text-white ${
+            tuneOpen ? "text-white" : "text-muted"
+          } ${chromeDrift}`}
+        >
+          tune
+        </button>
+      )}
 
       <SceneSettings
         scene={mode}

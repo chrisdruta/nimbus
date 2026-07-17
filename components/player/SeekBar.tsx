@@ -3,13 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import { Slider } from "@/components/ui/Slider";
 import { formatDuration } from "@/lib/format";
-import { usePlayerRefs, usePlayerState } from "./PlayerProvider";
+import { usePlayerActions, usePlayerRefs, usePlayerState } from "./PlayerProvider";
 
-/** Subscribes to the audio element directly — playback progress never
- * re-renders anything above this component. */
+/** Subscribes to the active playhead directly (positionMsNow reads the
+ * audio element, or extrapolated cast status while casting) — playback
+ * progress never re-renders anything above this component. */
 export function SeekBar() {
-  const { audioRef } = usePlayerRefs();
+  const { audioRef, positionMsNow } = usePlayerRefs();
   const { current, playing, caps } = usePlayerState();
+  const actions = usePlayerActions();
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const scrubRef = useRef<number | null>(null);
@@ -20,9 +22,11 @@ export function SeekBar() {
     if (!el) return;
     let raf = 0;
     const tick = () => {
-      if (scrubRef.current === null) setTime(el.currentTime);
+      if (scrubRef.current === null) setTime(positionMsNow() / 1000);
       raf = requestAnimationFrame(tick);
     };
+    // While casting the local element has no metadata — the track's own
+    // duration is the fallback either way.
     const onDuration = () =>
       setDuration(
         Number.isFinite(el.duration) && el.duration > 0
@@ -32,12 +36,12 @@ export function SeekBar() {
     onDuration();
     el.addEventListener("durationchange", onDuration);
     if (playing) raf = requestAnimationFrame(tick);
-    else setTime(el.currentTime);
+    else setTime(positionMsNow() / 1000);
     return () => {
       cancelAnimationFrame(raf);
       el.removeEventListener("durationchange", onDuration);
     };
-  }, [audioRef, playing, current]);
+  }, [audioRef, positionMsNow, playing, current]);
 
   const shown = scrubRef.current ?? time;
 
@@ -59,8 +63,7 @@ export function SeekBar() {
         }}
         onCommit={(v) => {
           scrubRef.current = null;
-          const el = audioRef.current;
-          if (el) el.currentTime = v;
+          actions.seekTo(v * 1000);
           setTime(v);
         }}
       />

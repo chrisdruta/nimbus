@@ -12,8 +12,21 @@ import {
   type RefObject,
 } from "react";
 import type { ProviderTrack } from "@/lib/provider";
-import Hls from "hls.js";
+import type Hls from "hls.js";
 import { formatReset } from "@/lib/format";
+import { buildAudioGraph, LIMITER_THRESHOLD_DB } from "@/lib/audio-graph";
+import { loadStreamInto } from "@/lib/stream-load";
+import {
+  canStartCasting,
+  castPositionMs,
+  shouldReresolve,
+  type CastPlayhead,
+} from "@/lib/cast";
+import {
+  useCastSender,
+  type CastSender,
+  type CastSenderStatus,
+} from "@/lib/hooks/useCastSender";
 import {
   createQueue,
   currentTrackId,
@@ -101,9 +114,6 @@ const VOLUME_KEY = "nimbus:volume";
 const LEVELER_BLOCK_MS = 250;
 /** Persist the estimate every N gated blocks once it's cache-worthy. */
 const LEVELER_SAVE_EVERY = 20;
-/** Limiter safety net for boosted quiet tracks; parked at 0 dB when
- * leveling is off so the disabled path stays untouched. */
-const LIMITER_THRESHOLD_DB = -1.5;
 /** Gain ramp time constants (s): slow while refining, fast on seeds. */
 const LEVELER_RAMP_S = 0.4;
 const LEVELER_SEED_RAMP_S = 0.05;
@@ -200,6 +210,14 @@ export interface PlayerState {
   slipstream: SlipstreamStatus | null;
   /** Set while in a shared session, hosting or joined. */
   shared: SharedSessionState | null;
+  /** Google Cast devices/session; null while the SDK is absent (no app
+   * id, non-Chrome) — the cast button hides entirely then. */
+  cast: {
+    status: Exclude<CastSenderStatus, "unavailable">;
+    deviceName: string | null;
+    /** Device volume (0..1) — the volume slider drives this while casting. */
+    deviceVolume: number;
+  } | null;
 }
 
 export interface PlayerActions {
@@ -254,11 +272,20 @@ export interface PlayerActions {
   removeFromSharedQueue(trackId: number): void;
   /** Swap a shared entry with its neighbor (revision-checked reorder). */
   moveInSharedQueue(trackId: number, dir: -1 | 1): void;
+  /** Open the browser's Cast device picker. */
+  startCasting(): void;
+  /** End the cast session (playback parks locally at the TV's position). */
+  stopCasting(): void;
+  /** Seek the active output — local element or cast receiver. */
+  seekTo(ms: number): void;
 }
 
 export interface PlayerRefs {
   audioRef: RefObject<HTMLAudioElement | null>;
   analyserRef: RefObject<AnalyserNode | null>;
+  /** Playhead of the active output (ms) — the local element normally,
+   * extrapolated cast status while casting. Read per frame, not state. */
+  positionMsNow(): number;
 }
 
 const StateCtx = createContext<PlayerState | null>(null);
@@ -369,6 +396,39 @@ export function PlayerProvider({
   const pendingSeekRef = useRef<{ trackId: number; ms: number } | null>(null);
   const playingRef = useRef(false);
   playingRef.current = playing;
+
+  // -------------------------------------------------------------- casting
+  /** Live while a cast session owns the output (local audio is silent). */
+  const castRef = useRef<{
+    /** Last status beat from the receiver + when it arrived. */
+    playhead: CastPlayhead | null;
+    /** Last quota-burning re-resolve, for the expiry retry policy. */
+    lastRetry: { trackId: number; positionMs: number } | null;
+  } | null>(null);
+  /** Local playhead captured at session start; shipped once the receiver
+   * says it's ready (messages sent earlier can be dropped). */
+  const handoffRef = useRef<{
+    trackId: number;
+    positionMs: number;
+    wasPlaying: boolean;
+  } | null>(null);
+  /** The last successfully resolved stream — cast start/resume reuses the
+   * URL already in hand instead of burning another play resolution. */
+  const lastStreamRef = useRef<{
+    trackId: number;
+    url: string;
+    protocol: "progressive" | "hls" | "unknown";
+  } | null>(null);
+  /** Assigned right after the hook call below; refs keep the async cast
+   * callbacks off the actions memo's dependency graph. */
+  const castSenderRef = useRef<CastSender | null>(null);
+  /** Late-bound like advanceRef — resolveAndPlay ships loads through it. */
+  const castLoadRef = useRef<
+    (
+      stream: { trackId: number; url: string; protocol: "progressive" | "hls" | "unknown" },
+      atMs: number,
+    ) => void
+  >(() => {});
 
   // ---------------------------------------------------- shared (sessions)
   const [shared, setShared] = useState<SharedSessionState | null>(null);
@@ -547,33 +607,11 @@ export function PlayerProvider({
       void ctxRef.current.resume();
       return;
     }
-    // A media element accepts exactly one MediaElementSourceNode, ever —
-    // build the graph once and reuse it for the app's lifetime:
-    // source → analyser → leveler gain → limiter → destination. The
-    // analyser taps pre-gain so the viz keeps today's signal and the
-    // leveler's measurements stay source-referenced (cacheable).
-    const ctx = new AudioContext();
-    const source = ctx.createMediaElementSource(el);
-    const analyser = ctx.createAnalyser();
-    // 8192 gives ~5.4 Hz/bin — enough to separate adjacent semitones down
-    // to ~G2 for the piano scene (the scope only reads the window's first
-    // 1536 samples, so its trace is unaffected). The longer FFT window
-    // smears time, so the analyser's own smoothing drops to compensate;
-    // down-smoothing lives in the cava-style gravity (lib/viz/dsp.ts).
-    analyser.fftSize = 8192;
-    analyser.smoothingTimeConstant = 0.35;
-    const gain = ctx.createGain();
-    // Brick-wall-ish safety net so boosted quiet tracks can't clip.
-    const limiter = ctx.createDynamicsCompressor();
-    limiter.knee.value = 0;
-    limiter.ratio.value = 20;
-    limiter.attack.value = 0.003;
-    limiter.release.value = 0.25;
-    limiter.threshold.value = levelingRef.current ? LIMITER_THRESHOLD_DB : 0;
-    source.connect(analyser);
-    analyser.connect(gain);
-    gain.connect(limiter);
-    limiter.connect(ctx.destination);
+    // Build the graph once and reuse it for the app's lifetime (a media
+    // element accepts exactly one MediaElementSourceNode, ever — the
+    // topology and its rationale live in lib/audio-graph.ts).
+    const { ctx, analyser, gain, limiter } = buildAudioGraph(el);
+    if (!levelingRef.current) limiter.threshold.value = 0;
     ctxRef.current = ctx;
     analyserRef.current = analyser;
     levelerGainRef.current = gain;
@@ -613,6 +651,9 @@ export function PlayerProvider({
     const iv = setInterval(() => {
       const analyser = analyserRef.current;
       const el = audioRef.current;
+      // While casting the analyser sees silence — the gate would hold,
+      // but don't even sample (and never risk poisoning the cache).
+      if (castRef.current) return;
       if (!analyser || !el || el.paused) return;
       if (!buf || buf.length !== analyser.fftSize) {
         buf = new Float32Array(analyser.fftSize);
@@ -758,48 +799,10 @@ export function PlayerProvider({
     ): Promise<void> => {
       hlsRef.current?.destroy();
       hlsRef.current = null;
-
-      if (stream.protocol !== "hls") {
-        el.src = stream.url;
-        return;
-      }
-      // Prefer hls.js over native HLS wherever MSE exists: the native HLS
-      // pipelines (Chrome 142+, Safari) don't feed MediaElementSourceNode,
-      // which silences the viz and the volume leveler. Native is the
-      // fallback for MSE-less browsers (iOS Safari).
-      if (!Hls.isSupported()) {
-        if (el.canPlayType("application/vnd.apple.mpegurl")) {
-          el.src = stream.url;
-          return;
-        }
-        throw new Error("HLS is unsupported");
-      }
-
-      const hls = new Hls({ enableWorker: true });
-      hlsRef.current = hls;
-      await new Promise<void>((resolve, reject) => {
-        const timeout = window.setTimeout(
-          () => finish(new Error("HLS manifest timed out")),
-          15_000,
-        );
-        const finish = (error?: Error) => {
-          window.clearTimeout(timeout);
-          hls.off(Hls.Events.MANIFEST_PARSED, onManifest);
-          hls.off(Hls.Events.ERROR, onError);
-          if (error) reject(error);
-          else resolve();
-        };
-        const onManifest = () => finish();
-        const onError = (
-          _event: string,
-          data: { fatal: boolean; type: string },
-        ) => {
-          if (data.fatal) finish(new Error(`HLS ${data.type}`));
-        };
-        hls.on(Hls.Events.MANIFEST_PARSED, onManifest);
-        hls.on(Hls.Events.ERROR, onError);
-        hls.attachMedia(el);
-        hls.loadSource(stream.url);
+      // The instance registers into hlsRef before the manifest wait so a
+      // superseding load (or unmount) can destroy it mid-flight.
+      await loadStreamInto(el, stream, (hls) => {
+        hlsRef.current = hls;
       });
     },
     [],
@@ -813,12 +816,14 @@ export function PlayerProvider({
     [],
   );
 
-  /** Local-queue consumer — today's semantics, unchanged. */
+  /** Local-queue consumer — today's semantics, unchanged. While casting,
+   * the resolved URL ships to the receiver instead of the local element;
+   * everything upstream (queue, quota, error vocabulary) is shared. */
   const resolveAndPlay = useCallback(
     async (trackId: number) => {
       const el = audioRef.current;
       if (!el) return;
-      ensureGraph();
+      if (!castRef.current) ensureGraph();
       setCurrent(metaRef.current.get(trackId) ?? null);
 
       const outcome = await resolveStream(trackId);
@@ -850,6 +855,18 @@ export function PlayerProvider({
       }
 
       failStreakRef.current = 0;
+      lastStreamRef.current = {
+        trackId,
+        url: outcome.url,
+        protocol: outcome.protocol,
+      };
+      if (castRef.current) {
+        const pending = pendingSeekRef.current;
+        const atMs = pending?.trackId === trackId ? pending.ms : 0;
+        pendingSeekRef.current = null;
+        castLoadRef.current(lastStreamRef.current, atMs);
+        return;
+      }
       try {
         await loadStream(el, outcome);
         await el.play();
@@ -980,6 +997,191 @@ export function PlayerProvider({
     if (id !== null) void resolveAndPlay(id);
   }, [refillRadio, resolveAndPlay, setQueue, toast]);
   advanceRef.current = advance;
+
+  // -------------------------------------------------------------- casting
+
+  /** Ship a load to the receiver: the signed URL plus everything the TV
+   * needs to render and level — the receiver never fetches our API. */
+  const castLoad = useCallback(
+    (
+      stream: {
+        trackId: number;
+        url: string;
+        protocol: "progressive" | "hls" | "unknown";
+      },
+      atMs: number,
+    ) => {
+      const meta = metaRef.current.get(stream.trackId);
+      if (!meta) return;
+      const loudness = loudnessMapRef.current.get(stream.trackId);
+      castSenderRef.current?.send({
+        type: "load",
+        trackId: stream.trackId,
+        url: stream.url,
+        protocol: stream.protocol,
+        positionMs: Math.max(0, Math.floor(atMs)),
+        gainDb: loudness !== undefined ? gainDbFor(loudness) : 0,
+        // Strip to the wire shape — the cache may hold richer objects.
+        track: {
+          id: meta.id,
+          title: meta.title,
+          artist: meta.artist,
+          ...(meta.artistId === undefined ? {} : { artistId: meta.artistId }),
+          artistUrl: meta.artistUrl,
+          artworkUrl: meta.artworkUrl,
+          permalinkUrl: meta.permalinkUrl,
+          durationMs: meta.durationMs,
+          ...(meta.preview === true ? { preview: true } : {}),
+        },
+      });
+      setPlaying(true);
+    },
+    [],
+  );
+  castLoadRef.current = castLoad;
+
+  const castSender = useCastSender({
+    onConnected({ deviceName, resumed }) {
+      // The button gates this, but sessions can also arrive via auto-join.
+      if (
+        !canStartCasting({
+          following: followRef.current !== null,
+          hostingShared: hostSessionRef.current !== null,
+        })
+      ) {
+        castSenderRef.current?.stop();
+        return;
+      }
+      castRef.current = { playhead: null, lastRetry: null };
+      // Capture the local playhead for the handoff (shipped on `ready`),
+      // then silence local output — the TV is the speaker now. A resumed
+      // session (sender reload) adopts the receiver's status beats instead.
+      const el = audioRef.current;
+      const q = queueRef.current;
+      const id = q ? currentTrackId(q) : null;
+      handoffRef.current =
+        !resumed &&
+        el !== null &&
+        id !== null &&
+        lastStreamRef.current?.trackId === id &&
+        el.src !== ""
+          ? {
+              trackId: id,
+              positionMs: el.currentTime * 1000,
+              wasPlaying: !el.paused,
+            }
+          : null;
+      if (el) {
+        el.pause();
+        el.removeAttribute("src");
+        el.load();
+      }
+      hlsRef.current?.destroy();
+      hlsRef.current = null;
+      setPlaying(false); // until the receiver's beats confirm
+      toast(`casting to ${deviceName ?? "tv"}`);
+    },
+
+    onDisconnected() {
+      const c = castRef.current;
+      if (!c) return;
+      castRef.current = null;
+      handoffRef.current = null;
+      // Park where the TV was; pressing play resumes locally from there
+      // via the pendingSeek machinery (mirrors leaving a slipstream).
+      const q = queueRef.current;
+      const id = q ? currentTrackId(q) : null;
+      const ph = c.playhead;
+      if (ph && id !== null && ph.trackId === id) {
+        pendingSeekRef.current = {
+          trackId: id,
+          ms: castPositionMs(ph, Date.now(), metaRef.current.get(id)?.durationMs),
+        };
+      }
+      setPlaying(false);
+      toast("cast ended");
+    },
+
+    onMessage(msg) {
+      const c = castRef.current;
+      if (!c) return;
+      switch (msg.type) {
+        case "ready": {
+          const h = handoffRef.current;
+          handoffRef.current = null;
+          if (!h || lastStreamRef.current?.trackId !== h.trackId) return;
+          if (h.wasPlaying) {
+            castLoadRef.current(lastStreamRef.current, h.positionMs);
+          } else {
+            // Paused handoff: hold the position; play sends the load.
+            pendingSeekRef.current = { trackId: h.trackId, ms: h.positionMs };
+          }
+          return;
+        }
+        case "status": {
+          c.playhead = {
+            trackId: msg.trackId,
+            positionMs: msg.positionMs,
+            playing: msg.playing,
+            atLocalMs: Date.now(),
+          };
+          const q = queueRef.current;
+          if (
+            q &&
+            currentTrackId(q) === msg.trackId &&
+            playingRef.current !== msg.playing
+          ) {
+            setPlaying(msg.playing);
+          }
+          return;
+        }
+        case "ended": {
+          const q = queueRef.current;
+          if (q && currentTrackId(q) === msg.trackId) advanceRef.current();
+          return;
+        }
+        case "error": {
+          const q = queueRef.current;
+          const id = q ? currentTrackId(q) : null;
+          if (id === null || msg.trackId !== id) return;
+          const atMs =
+            c.playhead && c.playhead.trackId === id
+              ? castPositionMs(
+                  c.playhead,
+                  Date.now(),
+                  metaRef.current.get(id)?.durationMs,
+                )
+              : 0;
+          if (shouldReresolve(c.lastRetry, id, atMs)) {
+            // One quota play: a fresh signed URL, reloaded at position.
+            c.lastRetry = { trackId: id, positionMs: atMs };
+            pendingSeekRef.current = { trackId: id, ms: atMs };
+            void resolveAndPlay(id);
+          } else {
+            toast("stream error on the tv — skipping", "error");
+            advanceRef.current();
+          }
+          return;
+        }
+      }
+    },
+  });
+  castSenderRef.current = castSender;
+
+  /** Playhead of the active output (ms) — see PlayerRefs.positionMsNow. */
+  const positionMsNow = useCallback((): number => {
+    const c = castRef.current;
+    const q = queueRef.current;
+    const id = q ? currentTrackId(q) : null;
+    if (c?.playhead && id !== null && c.playhead.trackId === id) {
+      return castPositionMs(
+        c.playhead,
+        Date.now(),
+        metaRef.current.get(id)?.durationMs,
+      );
+    }
+    return (audioRef.current?.currentTime ?? 0) * 1000;
+  }, []);
 
   // Prefetch more of the station a few tracks before it runs out.
   useEffect(() => {
@@ -1209,6 +1411,11 @@ export function PlayerProvider({
     async (hostId: number) => {
       const el = audioRef.current;
       if (!el || followRef.current?.host.userId === hostId) return;
+      // Casting and slipstream modes stay mutually exclusive (v1).
+      if (castRef.current) {
+        toast("stop casting to join a slipstream");
+        return;
+      }
       // Joining someone is an implicit stop of your own shared session.
       if (hostSessionRef.current) stopSharedSessionRef.current();
       const res = await fetch(`/api/slipstreams/${hostId}`).catch(() => null);
@@ -1467,6 +1674,11 @@ export function PlayerProvider({
   const startSharedSession = useCallback(async () => {
     const q = queueRef.current;
     if (!q || followRef.current || hostSessionRef.current) return;
+    // Casting and slipstream modes stay mutually exclusive (v1).
+    if (castRef.current) {
+      toast("stop casting to share the session");
+      return;
+    }
     const cur = currentTrackId(q);
     if (cur === null) return;
     const seed = seedEntries(upcoming(q, SHARED_SEED_COUNT), (id) =>
@@ -1609,6 +1821,35 @@ export function PlayerProvider({
       togglePlay() {
         const el = audioRef.current;
         if (!el) return;
+        const c = castRef.current;
+        if (c) {
+          const q = queueRef.current;
+          if (!q) return;
+          const id = currentTrackId(q);
+          if (id === null) return;
+          if (playingRef.current) {
+            castSenderRef.current?.send({ type: "pause" });
+            setPlaying(false);
+            return;
+          }
+          if (c.playhead?.trackId === id) {
+            castSenderRef.current?.send({ type: "play" });
+            setPlaying(true);
+            return;
+          }
+          // Nothing loaded on the TV yet — reuse the URL already in hand
+          // (paused handoff, reload) before burning a play resolution. A
+          // stale URL just errors on the receiver and re-resolves once.
+          const pending = pendingSeekRef.current;
+          const atMs = pending?.trackId === id ? pending.ms : 0;
+          if (lastStreamRef.current?.trackId === id) {
+            pendingSeekRef.current = null;
+            castLoadRef.current(lastStreamRef.current, atMs);
+          } else {
+            void resolveAndPlay(id);
+          }
+          return;
+        }
         const f = followRef.current;
         if (f) {
           // Following: pause is purely local; resume snaps back to the host.
@@ -1759,6 +2000,12 @@ export function PlayerProvider({
 
       setVolume(v) {
         const clamped = Math.min(1, Math.max(0, v));
+        // While casting the slider drives the device; the local volume
+        // (state + persistence) stays untouched for the return.
+        if (castRef.current) {
+          castSenderRef.current?.setDeviceVolume(clamped);
+          return;
+        }
         setVolumeState(clamped);
         try {
           localStorage.setItem(VOLUME_KEY, String(clamped));
@@ -1905,6 +2152,42 @@ export function PlayerProvider({
           expectedRevision: s.revision,
         });
       },
+
+      startCasting() {
+        if (
+          !canStartCasting({
+            following: followRef.current !== null,
+            hostingShared: hostSessionRef.current !== null,
+          })
+        ) {
+          toast("leave the slipstream to cast");
+          return;
+        }
+        castSenderRef.current?.start();
+      },
+
+      stopCasting() {
+        castSenderRef.current?.stop();
+      },
+
+      seekTo(ms) {
+        const c = castRef.current;
+        if (c) {
+          const clamped = Math.max(0, Math.floor(ms));
+          castSenderRef.current?.send({ type: "seek", ms: clamped });
+          // Optimistic: the scrubber shouldn't snap back for a beat.
+          if (c.playhead) {
+            c.playhead = {
+              ...c.playhead,
+              positionMs: clamped,
+              atLocalMs: Date.now(),
+            };
+          }
+          return;
+        }
+        const el = audioRef.current;
+        if (el) el.currentTime = ms / 1000;
+      },
     };
   }, [
     applyLevelerGain,
@@ -1948,6 +2231,8 @@ export function PlayerProvider({
         idleForMs: idleFor(),
       });
       if (action === "pause") {
+        // While casting the local element is silent — pause the TV.
+        if (castRef.current) castSenderRef.current?.send({ type: "pause" });
         audioRef.current?.pause();
         setPlaying(false);
         toast("paused — looks like you stepped away");
@@ -1991,14 +2276,13 @@ export function PlayerProvider({
       .filter((t): t is QueueTrack => t !== undefined);
     return {
       trackId: id,
-      positionMs: Math.max(
-        0,
-        Math.floor((audioRef.current?.currentTime ?? 0) * 1000),
-      ),
+      // The active output's playhead — cast position while casting, so
+      // published presence stays truthful with the TV.
+      positionMs: Math.max(0, Math.floor(positionMsNow())),
       playing: playingRef.current,
       window: [meta, ...rest],
     };
-  }, []);
+  }, [positionMsNow]);
 
   const sharedBeatState = useCallback(() => {
     const hs = hostSessionRef.current;
@@ -2049,6 +2333,14 @@ export function PlayerProvider({
       ),
       slipstream,
       shared,
+      cast:
+        castSender.status === "unavailable"
+          ? null
+          : {
+              status: castSender.status,
+              deviceName: castSender.deviceName,
+              deviceVolume: castSender.deviceVolume,
+            },
     }),
     [
       current,
@@ -2061,10 +2353,16 @@ export function PlayerProvider({
       autoRadio,
       privateListening,
       stageOpen,
+      castSender.status,
+      castSender.deviceName,
+      castSender.deviceVolume,
     ],
   );
 
-  const refs = useMemo<PlayerRefs>(() => ({ audioRef, analyserRef }), []);
+  const refs = useMemo<PlayerRefs>(
+    () => ({ audioRef, analyserRef, positionMsNow }),
+    [positionMsNow],
+  );
 
   return (
     <StateCtx.Provider value={state}>

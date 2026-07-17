@@ -4,6 +4,7 @@ import { NowPlaying, TrackActions } from "./NowPlaying";
 import { TransportControls } from "./TransportControls";
 import { SeekBar } from "./SeekBar";
 import { VolumeControl } from "./VolumeControl";
+import { CastButton } from "./CastButton";
 import { VisualizerCanvas } from "@/components/viz/VisualizerCanvas";
 import { IconQueue } from "@/components/ui/icons";
 import { usePlayerActions, usePlayerState } from "./PlayerProvider";
@@ -18,8 +19,9 @@ export function MediaBar({
   /** Someone's slipstream is live — surfaces as a dot on the queue button. */
   queueLive: boolean;
 }) {
-  const { current, stageOpen } = usePlayerState();
+  const { current, stageOpen, cast } = usePlayerState();
   const actions = usePlayerActions();
+  const casting = cast?.status === "connected";
 
   // Side columns are symmetric (1fr each) so the center column — and the
   // play button on its center line — sits on the true middle of the bar.
@@ -50,7 +52,10 @@ export function MediaBar({
                 }
                 className="hidden w-full max-w-28 cursor-pointer lg:block"
               >
-                <VisualizerCanvas className="h-8 w-full" />
+                {/* dimmed while casting — the analyser sees silence */}
+                <VisualizerCanvas
+                  className={`h-8 w-full ${casting ? "opacity-40" : ""}`}
+                />
               </button>
             )}
           </div>
@@ -66,6 +71,7 @@ export function MediaBar({
 
         <div className="hidden items-center gap-4 md:flex">
           <VolumeControl />
+          <CastButton />
           <button
             aria-label={queueOpen ? "close queue" : "open queue"}
             title="queue"

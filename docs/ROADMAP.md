@@ -56,7 +56,13 @@ project 30 days) trends toward its cap in the dashboard.
   over, but verify `MediaElementSource` on real hardware first. Main
   risk: weak CPUs on old Chromecast dongles — plan a "TV profile" of the
   SceneHost throttles (fewer bars/particles, 30fps cap); recent
-  Google TV devices are fine.
+  Google TV devices are fine. _Status (2026-07-17): M-a code landed —
+  wire protocol + retry policy in `lib/cast.ts` (tested), sender seam in
+  PlayerProvider, `/cast` receiver page (art-mode stage, `?debug=1`
+  harness), CSP matcher exclusion. Full design in
+  `docs/plans/cast-to-tv.md`. Blocked on: Cast Developer Console
+  registration (app id → `NEXT_PUBLIC_CAST_APP_ID`, device serials) and
+  the on-hardware validation checklist; viz-on-TV is M-b._
 
 Direction decisions (2026-07-13): **mobile is out of scope** for now —
 nobody in the friend group wants it. **Viz stays pure TS + AnalyserNode —

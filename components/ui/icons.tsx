@@ -7,6 +7,7 @@
 import {
   ArrowLeft,
   AudioWaveform,
+  Cast,
   ChevronDown,
   ChevronUp,
   Cloud,
@@ -83,6 +84,9 @@ export const IconMute = ({ size = 20, ...p }: IconProps) => (
 );
 export const IconLevel = ({ size = 20, ...p }: IconProps) => (
   <AudioWaveform size={size} {...p} />
+);
+export const IconCast = ({ size = 20, ...p }: IconProps) => (
+  <Cast size={size} {...p} />
 );
 /** Pass `fill="currentColor"` for the liked (solid) state. */
 export const IconHeart = ({ size = 20, ...p }: IconProps) => (

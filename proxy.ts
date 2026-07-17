@@ -44,8 +44,12 @@ export const config = {
   matcher: [
     {
       // HTML documents only: API routes never render one, and prefetches
-      // execute in the context of an already-nonced page.
-      source: "/((?!api|_next/static|_next/image|favicon.ico).*)",
+      // execute in the context of an already-nonced page. /cast is the
+      // Cast Web Receiver the TV loads: CAF needs gstatic scripts plus a
+      // local platform WebSocket that connect-src 'self' would block, and
+      // the page holds no user data — no CSP there is the honest call
+      // (a CSP'd /cast fails invisibly as a black TV screen).
+      source: "/((?!api|cast|_next/static|_next/image|favicon.ico).*)",
       missing: [
         { type: "header", key: "next-router-prefetch" },
         { type: "header", key: "purpose", value: "prefetch" },
