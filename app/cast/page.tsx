@@ -11,6 +11,61 @@ export const metadata: Metadata = {
   robots: { index: false },
 };
 
+// Pre-bundle boot probe, plain DOM on purpose: if the app bundle fails
+// to even parse on a TV's runtime, React (and any React-rendered error
+// UI) never exists — this inline script still runs and paints the
+// failure on screen. ReceiverApp advances the stage marker as it boots;
+// "boot:html" lingering on the TV means our JS never executed.
+const probe = `
+window.__nimbusCastStage = function (s) {
+  var el = document.getElementById("cast-stage-probe");
+  if (el) el.textContent = s;
+};
+window.addEventListener("error", function (e) {
+  var el = document.getElementById("cast-error-probe");
+  if (el && !el.textContent) {
+    el.textContent =
+      (e.message || "error") + " @ " + (e.filename || "?") + ":" + (e.lineno || 0);
+  }
+});
+window.addEventListener("unhandledrejection", function (e) {
+  var el = document.getElementById("cast-error-probe");
+  if (el && !el.textContent) el.textContent = "rejection: " + String(e.reason);
+});
+`;
+
 export default function CastPage() {
-  return <ReceiverApp />;
+  return (
+    <>
+      <script dangerouslySetInnerHTML={{ __html: probe }} />
+      <div
+        id="cast-error-probe"
+        style={{
+          position: "fixed",
+          insetInline: 8,
+          top: 8,
+          zIndex: 50,
+          textAlign: "center",
+          fontFamily: "monospace",
+          fontSize: 14,
+          color: "#f87171",
+        }}
+      />
+      <div
+        id="cast-stage-probe"
+        style={{
+          position: "fixed",
+          right: 8,
+          bottom: 8,
+          zIndex: 50,
+          fontFamily: "monospace",
+          fontSize: 12,
+          color: "#777",
+        }}
+      >
+        boot:html
+      </div>
+      <ReceiverApp />
+    </>
+  );
 }

@@ -20,6 +20,12 @@ import { IconCloud } from "@/components/ui/icons";
 const RECEIVER_SDK_URL =
   "https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js";
 
+/** Advance the on-screen boot probe (installed pre-bundle by the page). */
+const stage = (s: string) =>
+  (
+    window as unknown as { __nimbusCastStage?: (s: string) => void }
+  ).__nimbusCastStage?.(s);
+
 type Mode =
   | "boot"
   /** ?debug=1 — CAF stubbed; the panel injects messages by hand. */
@@ -178,8 +184,10 @@ export function ReceiverApp() {
   // Boot: debug harness on ?debug=1, otherwise load the CAF SDK and open
   // the custom channel.
   useEffect(() => {
+    stage("boot:react");
     if (new URLSearchParams(window.location.search).has("debug")) {
       setMode("debug");
+      stage("debug");
       sendRef.current = (msg) =>
         setDebugLog((log) => [...log.slice(-19), JSON.stringify(msg)]);
       return;
@@ -187,11 +195,13 @@ export function ReceiverApp() {
     const script = document.createElement("script");
     script.src = RECEIVER_SDK_URL;
     script.onload = () => {
+      stage("sdk:loaded");
       try {
         initCast();
       } catch (err) {
         setFatal((f) => f ?? `init: ${String(err)}`);
         setMode("cast-failed");
+        stage("cast:failed");
       }
     };
     const initCast = () => {
@@ -266,10 +276,12 @@ export function ReceiverApp() {
       });
       console.log("[nimbus-cast] receiver started", CAST_NAMESPACE);
       setMode("cast");
+      stage("cast:started");
     };
     script.onerror = () => {
       setFatal((f) => f ?? "cast sdk script failed to load");
       setMode("cast-failed");
+      stage("sdk:load-failed");
     };
     document.head.appendChild(script);
   }, []);
