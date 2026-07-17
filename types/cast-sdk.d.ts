@@ -103,6 +103,10 @@ declare namespace cast.framework {
       JSON: string;
       STRING: string;
     };
+    const EventType: {
+      SENDER_CONNECTED: string;
+      SENDER_DISCONNECTED: string;
+    };
   }
 
   interface CustomMessageEvent {
@@ -113,6 +117,10 @@ declare namespace cast.framework {
 
   class CastReceiverContext {
     static getInstance(): CastReceiverContext;
+    addEventListener(
+      type: string,
+      listener: (event: { senderId?: string }) => void,
+    ): void;
     addCustomMessageListener(
       namespace: string,
       listener: (event: CustomMessageEvent) => void,

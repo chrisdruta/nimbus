@@ -429,6 +429,8 @@ export function PlayerProvider({
       atMs: number,
     ) => void
   >(() => {});
+  /** Fallback timer: ship the handoff even if `ready` never arrives. */
+  const handoffTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ---------------------------------------------------- shared (sessions)
   const [shared, setShared] = useState<SharedSessionState | null>(null);
@@ -1040,6 +1042,26 @@ export function PlayerProvider({
   );
   castLoadRef.current = castLoad;
 
+  /** Ship the captured handoff exactly once (the receiver's `ready`, its
+   * per-sender re-announce, and the sender's fallback timer all funnel
+   * here; whichever fires first consumes it). */
+  const flushHandoff = useCallback(() => {
+    if (handoffTimerRef.current) {
+      clearTimeout(handoffTimerRef.current);
+      handoffTimerRef.current = null;
+    }
+    const h = handoffRef.current;
+    handoffRef.current = null;
+    if (!castRef.current || !h) return;
+    if (lastStreamRef.current?.trackId !== h.trackId) return;
+    if (h.wasPlaying) {
+      castLoadRef.current(lastStreamRef.current, h.positionMs);
+    } else {
+      // Paused handoff: hold the position; play sends the load.
+      pendingSeekRef.current = { trackId: h.trackId, ms: h.positionMs };
+    }
+  }, []);
+
   const castSender = useCastSender({
     onConnected({ deviceName, resumed }) {
       // The button gates this, but sessions can also arrive via auto-join.
@@ -1079,6 +1101,13 @@ export function PlayerProvider({
       hlsRef.current?.destroy();
       hlsRef.current = null;
       setPlaying(false); // until the receiver's beats confirm
+      // Belt and braces for the ready handshake: if the receiver's
+      // announce is lost, ship the handoff anyway once the channel has
+      // had time to settle.
+      if (handoffTimerRef.current) clearTimeout(handoffTimerRef.current);
+      if (handoffRef.current) {
+        handoffTimerRef.current = setTimeout(flushHandoff, 3_000);
+      }
       toast(`casting to ${deviceName ?? "tv"}`);
     },
 
@@ -1087,6 +1116,10 @@ export function PlayerProvider({
       if (!c) return;
       castRef.current = null;
       handoffRef.current = null;
+      if (handoffTimerRef.current) {
+        clearTimeout(handoffTimerRef.current);
+        handoffTimerRef.current = null;
+      }
       // Park where the TV was; pressing play resumes locally from there
       // via the pendingSeek machinery (mirrors leaving a slipstream).
       const q = queueRef.current;
@@ -1107,15 +1140,7 @@ export function PlayerProvider({
       if (!c) return;
       switch (msg.type) {
         case "ready": {
-          const h = handoffRef.current;
-          handoffRef.current = null;
-          if (!h || lastStreamRef.current?.trackId !== h.trackId) return;
-          if (h.wasPlaying) {
-            castLoadRef.current(lastStreamRef.current, h.positionMs);
-          } else {
-            // Paused handoff: hold the position; play sends the load.
-            pendingSeekRef.current = { trackId: h.trackId, ms: h.positionMs };
-          }
+          flushHandoff();
           return;
         }
         case "status": {

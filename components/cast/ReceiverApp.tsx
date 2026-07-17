@@ -178,13 +178,6 @@ export function ReceiverApp() {
         const msg = parseSenderMessage(event.data);
         if (msg) void handleMessageRef.current(msg);
       });
-      ctx.start({
-        // No PlayerManager LOAD ever happens on this channel — without
-        // this, CAF's media-idle reaper would kill the app mid-track.
-        // (The app still closes when the last sender disconnects.)
-        disableIdleTimeout: true,
-        customNamespaces: { [CAST_NAMESPACE]: cf.system.MessageType.JSON },
-      });
       sendRef.current = (msg) => {
         try {
           ctx.sendCustomMessage(CAST_NAMESPACE, undefined, msg);
@@ -192,9 +185,21 @@ export function ReceiverApp() {
           // channel not up yet — beats self-correct
         }
       };
+      // `ready` gates the sender's handoff, and a broadcast during boot
+      // races the channel handshake and gets dropped — announce it to
+      // each sender as it actually connects instead (this also covers a
+      // second sender joining later).
+      ctx.addEventListener(cf.system.EventType.SENDER_CONNECTED, () => {
+        sendRef.current({ type: "ready" });
+      });
+      ctx.start({
+        // No PlayerManager LOAD ever happens on this channel — without
+        // this, CAF's media-idle reaper would kill the app mid-track.
+        // (The app still closes when the last sender disconnects.)
+        disableIdleTimeout: true,
+        customNamespaces: { [CAST_NAMESPACE]: cf.system.MessageType.JSON },
+      });
       setMode("cast");
-      // The sender holds its handoff until the channel is provably open.
-      sendRef.current({ type: "ready" });
     };
     script.onerror = () => setMode("cast-failed");
     document.head.appendChild(script);
