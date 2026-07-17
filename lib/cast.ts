@@ -18,13 +18,15 @@ export const CAST_NAMESPACE = "urn:x-cast:com.nimbus.cast";
 /** Receiver → sender status cadence while a track is loaded. */
 export const STATUS_BEAT_MS = 1_000;
 
-/** Rendering profile for TV hardware: old Chromecast dongles have weak
- * CPUs and 1080p panels upscale fine, so the receiver caps frame rate,
- * pins DPR, and thins the spectrum instead of dropping frames. */
+/** Rendering profile for TV hardware: the Cast runtime's CPU budget is
+ * small, and at couch distance a soft upscale is invisible — so the
+ * receiver caps frame rate, renders at reduced resolution (dpr < 1),
+ * and thins the spectrum instead of dropping frames. Tuned on a Google
+ * TV Streamer (2026-07: dpr 1 / 48 bars read as laggy). */
 export const TV_PROFILE = {
   maxFps: 30,
-  dpr: 1,
-  barCount: 48,
+  dpr: 0.75,
+  barCount: 40,
 } as const;
 
 // ------------------------------------------------------------------ wire
