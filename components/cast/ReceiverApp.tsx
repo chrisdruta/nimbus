@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import Hls from "hls.js";
 import {
   CAST_NAMESPACE,
@@ -13,7 +19,7 @@ import { buildAudioGraph, type AudioGraph } from "@/lib/audio-graph";
 import { loadStreamInto } from "@/lib/stream-load";
 import { LEVELER, dbToLinear } from "@/lib/loudness";
 import type { QueueTrack } from "@/lib/queue";
-import { CrossfadeArt } from "@/components/art/CrossfadeArt";
+import { artworkSized, loadArtworkImage } from "@/lib/artwork";
 import { useVizTheme } from "@/components/viz/useVizTheme";
 import { IconCloud } from "@/components/ui/icons";
 
@@ -32,6 +38,73 @@ type Mode =
   | "debug"
   | "cast"
   | "cast-failed";
+
+// All styling on this page is inline, deliberately: the Cast web runtime
+// is ~Chrome 87 and cannot parse Tailwind v4's output (oklch, color-mix,
+// @layer — Chrome 111+), so the app stylesheet arrives broken here.
+// Inline style objects are plain CSS properties and survive anywhere.
+const muted = "#9a9aa0";
+const fill: CSSProperties = {
+  position: "absolute",
+  top: 0,
+  right: 0,
+  bottom: 0,
+  left: 0,
+};
+const mono: CSSProperties = {
+  fontFamily: "ui-monospace, monospace",
+  fontSize: 12,
+};
+const debugButton: CSSProperties = {
+  padding: "4px 8px",
+  borderRadius: 6,
+  border: "1px solid rgba(255,255,255,0.2)",
+  background: "transparent",
+  color: "inherit",
+  cursor: "pointer",
+  ...mono,
+};
+
+/** Decode-then-swap artwork (no half-loaded pop); plain <img>, no
+ * Tailwind. Old-runtime-safe stand-in for CrossfadeArt. */
+function ReceiverArt({
+  url,
+  style,
+}: {
+  url: string | null;
+  style?: CSSProperties;
+}) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    if (!url) {
+      setSrc(null);
+      return;
+    }
+    let stale = false;
+    void loadArtworkImage(url).then((img) => {
+      if (!stale) setSrc(img ? artworkSized(url, "t500x500") : null);
+    });
+    return () => {
+      stale = true;
+    };
+  }, [url]);
+  if (!src) return null;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt=""
+      aria-hidden
+      style={{
+        ...fill,
+        width: "100%",
+        height: "100%",
+        objectFit: "cover",
+        ...style,
+      }}
+    />
+  );
+}
 
 /**
  * The TV-side app: a plain audio element + the shared audio graph and
@@ -340,61 +413,149 @@ export function ReceiverApp() {
 
   return (
     <div
-      className="fixed inset-0 overflow-hidden"
-      style={{ background: theme.background }}
+      style={{
+        position: "fixed",
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        overflow: "hidden",
+        background: theme.background,
+        color: "#fff",
+        fontFamily: "var(--font-comfortaa), system-ui, sans-serif",
+      }}
     >
       {/* blurred-art fill, StageView's art-mode backdrop */}
-      <div className="absolute inset-0 overflow-hidden">
-        <CrossfadeArt
+      <div style={{ ...fill, overflow: "hidden" }}>
+        <ReceiverArt
           url={track?.artworkUrl ?? null}
-          durationMs={1200}
-          className="scale-125 object-cover blur-3xl saturate-125 brightness-[0.55]"
+          style={{
+            transform: "scale(1.25)",
+            filter: "blur(64px) saturate(1.25) brightness(0.55)",
+          }}
         />
       </div>
 
       {track ? (
         <>
-          <div className="absolute inset-0 flex items-center justify-center pt-16 pb-24">
-            <div className="relative aspect-square h-[min(62vmin,100%)] overflow-hidden rounded-xl shadow-2xl">
+          <div
+            style={{
+              ...fill,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              paddingTop: 56,
+              paddingBottom: 96,
+            }}
+          >
+            <div
+              style={{
+                position: "relative",
+                width: "58vmin",
+                height: "58vmin",
+                overflow: "hidden",
+                borderRadius: 12,
+                boxShadow: "0 24px 60px rgba(0,0,0,0.5)",
+                background: "rgba(255,255,255,0.05)",
+              }}
+            >
               {track.artworkUrl ? (
-                <CrossfadeArt
-                  url={track.artworkUrl}
-                  durationMs={800}
-                  className="object-contain"
-                />
+                <ReceiverArt url={track.artworkUrl} />
               ) : (
-                <div className="flex h-full w-full items-center justify-center bg-white/5 text-muted">
+                <div
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: muted,
+                  }}
+                >
                   <IconCloud size={96} />
                 </div>
               )}
             </div>
           </div>
-          <div className="absolute bottom-10 left-10">
-            <p className="max-w-[70vw] truncate text-3xl font-bold">
+          <div style={{ position: "absolute", left: 40, bottom: 36 }}>
+            <p
+              style={{
+                margin: 0,
+                maxWidth: "70vw",
+                overflow: "hidden",
+                whiteSpace: "nowrap",
+                textOverflow: "ellipsis",
+                fontSize: 30,
+                fontWeight: 700,
+                textShadow: "0 1px 10px rgba(0,0,0,0.85)",
+              }}
+            >
               {track.title}
             </p>
-            <p className="mt-1 text-lg text-muted">
+            <p style={{ margin: "6px 0 0", fontSize: 18, color: muted }}>
               {track.artist} · on SoundCloud
             </p>
           </div>
           {!playing && (
-            <p className="absolute right-10 bottom-10 text-lg text-muted">
+            <p
+              style={{
+                position: "absolute",
+                right: 40,
+                bottom: 36,
+                margin: 0,
+                fontSize: 18,
+                color: muted,
+              }}
+            >
               paused
             </p>
           )}
         </>
       ) : (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-muted">
+        <div
+          style={{
+            ...fill,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 12,
+            color: muted,
+          }}
+        >
           <IconCloud size={72} />
-          <p className="text-2xl font-bold text-white/90">nimbus</p>
-          <p className="text-sm">
+          <p
+            style={{
+              margin: 0,
+              fontSize: 26,
+              fontWeight: 700,
+              color: "rgba(255,255,255,0.9)",
+            }}
+          >
+            nimbus
+          </p>
+          <p style={{ margin: 0, fontSize: 14 }}>
             {mode === "cast-failed" ? "cast sdk failed to load" : "ready to cast"}
           </p>
         </div>
       )}
 
       {fatal && (
-        <p className="absolute inset-x-8 top-6 z-20 text-center font-mono text-sm text-red-400 [text-shadow:0_1px_8px_rgba(0,0,0,0.9)]">
+        <p
+          style={{
+            position: "absolute",
+            left: 32,
+            right: 32,
+            top: 24,
+            zIndex: 20,
+            margin: 0,
+            textAlign: "center",
+            color: "#f87171",
+            textShadow: "0 1px 8px rgba(0,0,0,0.9)",
+            ...mono,
+            fontSize: 14,
+          }}
+        >
           {fatal}
         </p>
       )}
@@ -433,7 +594,16 @@ export function ReceiverApp() {
       />
 
       {mode === "debug" && !debugStarted && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/70">
+        <div
+          style={{
+            ...fill,
+            zIndex: 10,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(0,0,0,0.7)",
+          }}
+        >
           <button
             onClick={() => {
               // The user gesture the browser's autoplay policy wants —
@@ -442,7 +612,12 @@ export function ReceiverApp() {
               if (el && !graphRef.current) graphRef.current = buildAudioGraph(el);
               setDebugStarted(true);
             }}
-            className="cursor-pointer rounded-lg border border-white/20 px-6 py-3 text-lg hover:border-white/50"
+            style={{
+              ...debugButton,
+              padding: "12px 24px",
+              fontSize: 18,
+              fontFamily: "inherit",
+            }}
           >
             start receiver (debug)
           </button>
@@ -450,28 +625,44 @@ export function ReceiverApp() {
       )}
 
       {mode === "debug" && debugStarted && (
-        <div className="absolute top-4 right-4 z-10 flex w-80 flex-col gap-2 rounded-lg bg-black/70 p-3 text-xs backdrop-blur">
-          <div className="flex gap-2">
+        <div
+          style={{
+            position: "absolute",
+            top: 16,
+            right: 16,
+            zIndex: 10,
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            width: 320,
+            padding: 12,
+            borderRadius: 8,
+            background: "rgba(0,0,0,0.7)",
+            ...mono,
+          }}
+        >
+          <div style={{ display: "flex", gap: 8 }}>
             <input
               ref={debugInputRef}
               placeholder="track id"
-              className="w-24 rounded border border-white/20 bg-transparent px-2 py-1"
+              style={{
+                ...debugButton,
+                cursor: "text",
+                width: 96,
+              }}
             />
-            <button
-              onClick={() => void debugLoadTrack()}
-              className="cursor-pointer rounded border border-white/20 px-2 py-1 hover:border-white/50"
-            >
+            <button onClick={() => void debugLoadTrack()} style={debugButton}>
               load
             </button>
             <button
               onClick={() => void handleMessage({ type: "play" })}
-              className="cursor-pointer rounded border border-white/20 px-2 py-1 hover:border-white/50"
+              style={debugButton}
             >
               play
             </button>
             <button
               onClick={() => void handleMessage({ type: "pause" })}
-              className="cursor-pointer rounded border border-white/20 px-2 py-1 hover:border-white/50"
+              style={debugButton}
             >
               pause
             </button>
@@ -480,17 +671,30 @@ export function ReceiverApp() {
             ref={debugJsonRef}
             placeholder='paste a sender message, e.g. {"type":"seek","ms":60000}'
             rows={3}
-            className="rounded border border-white/20 bg-transparent px-2 py-1 font-mono"
+            style={{ ...debugButton, cursor: "text", resize: "vertical" }}
           />
           <button
             onClick={debugSendJson}
-            className="cursor-pointer self-start rounded border border-white/20 px-2 py-1 hover:border-white/50"
+            style={{ ...debugButton, alignSelf: "flex-start" }}
           >
             send message
           </button>
-          <div className="max-h-40 overflow-y-auto font-mono text-white/60">
+          <div
+            style={{
+              maxHeight: 160,
+              overflowY: "auto",
+              color: "rgba(255,255,255,0.6)",
+            }}
+          >
             {debugLog.map((line, i) => (
-              <div key={i} className="truncate">
+              <div
+                key={i}
+                style={{
+                  overflow: "hidden",
+                  whiteSpace: "nowrap",
+                  textOverflow: "ellipsis",
+                }}
+              >
                 {line}
               </div>
             ))}
