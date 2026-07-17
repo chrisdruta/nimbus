@@ -92,6 +92,11 @@ export const TrackTile = memo(function TrackTile({
             ↻ repost
           </span>
         )}
+        {track.streamable && track.preview && (
+          <span className="bg-black/75 px-1.5 py-0.5 text-[10px] text-muted backdrop-blur-sm">
+            preview
+          </span>
+        )}
       </span>
 
       {track.streamable && !isCurrent && (

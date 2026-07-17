@@ -252,6 +252,21 @@ describe("parseHeartbeat", () => {
     expect(hb!.window![0]).not.toHaveProperty("streamUrl");
   });
 
+  test("preview survives the strip; false normalizes to absent; junk rejects", () => {
+    const hb = parseHeartbeat({
+      ...valid,
+      window: [{ ...track(10), preview: true }, { ...track(20), preview: false }],
+    });
+    expect(hb!.window![0].preview).toBe(true);
+    expect(hb!.window![1]).not.toHaveProperty("preview");
+    expect(
+      parseHeartbeat({
+        ...valid,
+        window: [{ ...track(10), preview: "yes" }],
+      }),
+    ).toBeNull();
+  });
+
   test("rejects malformed shapes", () => {
     expect(parseHeartbeat(null)).toBeNull();
     expect(parseHeartbeat("hi")).toBeNull();

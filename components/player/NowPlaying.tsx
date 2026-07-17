@@ -158,6 +158,7 @@ export function NowPlaying() {
           >
             on SoundCloud
           </a>
+          {current.preview && " · preview"}
         </div>
         {slipstream && (
           <div className="truncate text-[11px]">

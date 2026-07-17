@@ -47,7 +47,8 @@ function isTrack(t: unknown): t is ProviderTrack {
     (o.artworkUrl === null || typeof o.artworkUrl === "string") &&
     typeof o.permalinkUrl === "string" &&
     typeof o.durationMs === "number" &&
-    typeof o.streamable === "boolean"
+    typeof o.streamable === "boolean" &&
+    (o.preview === undefined || typeof o.preview === "boolean")
   );
 }
 

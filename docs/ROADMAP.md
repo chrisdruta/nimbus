@@ -26,13 +26,6 @@ project 30 days) trends toward its cap in the dashboard.
 
 ## Next / ideas
 
-- **Slipstream follow-ups** — preview badge for `access: "preview"`
-  tracks (30s snippets via the API).
-- **CSP: drop `script-src 'unsafe-inline'`** — nonce middleware (all
-  routes are already dynamic, so no static-rendering cost). Deferred from
-  the 2026-07-16 security pass as the highest-regression-risk item
-  (hydration, OAuth redirects, hls.js); verify OAuth/player/viz live
-  before shipping.
 - **Route-level integration tests** — the 2026-07-16 audit wanted
   DB-backed route tests (auth callback branches, same-origin rejection,
   quota headers). Contradicts the pure-functions-only test convention and
@@ -74,6 +67,56 @@ OffscreenCanvas worker → WebGL/WebGPU → only then WASM+SIMD. Staying
 plain-web also keeps a future Cast receiver a plain page.
 
 ## Shipped
+
+### Nonce CSP + preview badge (2026-07-17)
+
+Two deferred items closed together.
+
+- **CSP: `script-src 'unsafe-inline'` dropped** — per-request nonce policy
+  in a new `proxy.ts` (Next 16 renamed middleware to proxy). The proxy sets
+  the CSP on both the cloned request headers (Next reads the nonce there
+  and stamps it on every framework `<script>`) and the response; script-src
+  is now `'self' 'nonce-…' 'strict-dynamic'` (+ `'unsafe-eval'` dev-only —
+  dev runs the same nonce policy so daily verification exercises the real
+  thing). All other directives are byte-identical to the old policy and
+  `style-src 'unsafe-inline'` stays (next/font inline style; its own item
+  someday). CSP left `next.config.ts` entirely — two CSP headers enforce
+  their intersection; the other security headers stay there. Matcher
+  excludes `api`/`_next` statics/prefetches, keeping the proxy away from
+  the OAuth routes. The app has zero inline scripts, so no app code needed
+  the nonce. Rider: a branded `app/not-found.tsx` (house-style, rendered
+  per-request via `connection()`) — the default 404 was the one static
+  page, and its prerendered nonce-less scripts got blocked to console
+  noise under the new policy.
+- **Preview badge** — `access: "preview"` now survives normalization as an
+  optional `preview?: boolean` on `ProviderTrack`/`QueueTrack` (boolean,
+  not the raw enum: "blocked" is already folded into `streamable`, and the
+  seam shouldn't leak provider vocabulary), threaded with the M13
+  `artistId` conditional-spread/optional-validation pattern through
+  `toTrack`, the PlayerProvider copy sites, queue persistence, the IDB
+  library cache, and slipstream window/shared-queue wire validation
+  (playable tracks carry zero extra bytes anywhere). A quiet lowercase
+  `preview` marker shows on tiles (chip), rows/queue panel/media bar
+  (` · preview`), gated on `streamable && preview` so it never doubles
+  with "unavailable" — and it rides heartbeat windows, so followers see it
+  too.
+
+Validation: 402 tests green (4 new: optional-field truth tables for cache/
+queue snapshot, wire strip/normalize/reject for slipstream windows and
+shared-queue add); typecheck + production build clean (`ƒ Proxy` registered,
+`/_not-found` now dynamic). Live dev pass: exactly one CSP header, fresh
+nonce per request, all 23 served script tags nonced, `/api/*` responses
+CSP-free with the next.config headers intact; hydration, likes/search/feed
+browse, one full-track play (hls.js blob worker, animating analyser-fed
+viz, seek) all clean of violations. Prod-policy pass (`bun run build &&
+bun start`, no `unsafe-eval`): hydration + authed browse clean; 404 page
+branded and violation-free. Badge live: search tile chip + list-row marker
+on a major-label result, one preview play (29.8s element duration) showed
+` · preview` in the media bar and queue rows, `preview: true` observed in
+the heartbeat POST window, and the marker survived reload from the
+persisted snapshot. Deferred to the production deploy (single OAuth
+redirect URI): the OAuth dance and Clear-Site-Data farewell under the new
+CSP, real-HTTPS first load, and a second member's follower-side badge.
 
 ### Security & privacy pass (2026-07-16)
 

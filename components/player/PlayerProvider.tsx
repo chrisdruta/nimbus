@@ -288,6 +288,7 @@ function toQueueTrack(t: ProviderTrack): QueueTrack {
     artworkUrl: t.artworkUrl,
     permalinkUrl: t.permalinkUrl,
     durationMs: t.durationMs,
+    ...(t.preview === true ? { preview: true } : {}),
   };
 }
 
@@ -302,6 +303,7 @@ function entryToTrack(e: SharedQueueEntry): QueueTrack {
     artworkUrl: e.artworkUrl,
     permalinkUrl: e.permalinkUrl,
     durationMs: e.durationMs,
+    ...(e.preview === true ? { preview: true } : {}),
   };
 }
 
@@ -1841,6 +1843,7 @@ export function PlayerProvider({
           artworkUrl: track.artworkUrl,
           permalinkUrl: track.permalinkUrl,
           durationMs: track.durationMs,
+          ...(track.preview === true ? { preview: true } : {}),
         };
         metaRef.current.set(clean.id, clean);
         void postQueueOp(hostId, { op: "add", track: clean }).then((ok) => {

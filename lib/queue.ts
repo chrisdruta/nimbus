@@ -34,6 +34,9 @@ export interface QueueTrack {
   artworkUrl: string | null;
   permalinkUrl: string;
   durationMs: number;
+  /** True when only a short preview stream is available; absent otherwise
+   * and on snapshots persisted before the field existed. */
+  preview?: boolean;
 }
 
 export interface QueueState {
@@ -481,7 +484,8 @@ function isQueueTrack(t: unknown): t is QueueTrack {
     typeof x.artistUrl === "string" &&
     (x.artworkUrl === null || typeof x.artworkUrl === "string") &&
     typeof x.permalinkUrl === "string" &&
-    typeof x.durationMs === "number"
+    typeof x.durationMs === "number" &&
+    (x.preview === undefined || typeof x.preview === "boolean")
   );
 }
 

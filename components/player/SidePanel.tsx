@@ -103,6 +103,7 @@ function SharedRow({
         <p className="truncate text-sm">{entry.title}</p>
         <p className="truncate text-xs text-muted">
           {entry.artist}
+          {entry.preview && " · preview"}
           {entry.addedBy && ` · added by ${entry.addedBy}`}
         </p>
       </div>

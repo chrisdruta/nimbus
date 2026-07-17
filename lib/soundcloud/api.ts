@@ -313,6 +313,7 @@ function toTrack(t: ScTrack): ProviderTrack {
     permalinkUrl: webUrl(t.permalink_url),
     durationMs: t.duration,
     streamable: (t.streamable ?? true) && t.access !== "blocked",
+    ...(t.access === "preview" ? { preview: true } : {}),
   };
 }
 

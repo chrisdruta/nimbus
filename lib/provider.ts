@@ -28,6 +28,9 @@ export interface ProviderTrack {
   durationMs: number;
   /** False when the provider marks the track non-streamable off-platform. */
   streamable: boolean;
+  /** True when the provider serves only a short (~30s) preview stream.
+   * Absent on full tracks and on records persisted before the field existed. */
+  preview?: boolean;
 }
 
 /** An artist profile — the subject of search results and artist pages. */

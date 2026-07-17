@@ -1,25 +1,7 @@
 import type { NextConfig } from "next";
 
-const contentSecurityPolicy = [
-  "default-src 'self'",
-  "base-uri 'self'",
-  "object-src 'none'",
-  "frame-ancestors 'none'",
-  "form-action 'self'",
-  // React dev mode needs eval() for debugging features; production never
-  // gets it.
-  `script-src 'self' 'unsafe-inline'${
-    process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""
-  }`,
-  "style-src 'self' 'unsafe-inline'",
-  "font-src 'self' data:",
-  "img-src 'self' data: blob: https://*.sndcdn.com",
-  "media-src 'self' blob: https://*.sndcdn.com https://*.soundcloud.cloud",
-  "connect-src 'self' https://*.sndcdn.com https://*.soundcloud.cloud",
-  "worker-src 'self' blob:",
-  "upgrade-insecure-requests",
-].join("; ");
-
+// The Content-Security-Policy is set per-request in proxy.ts (nonce-based
+// script-src needs a fresh nonce, which static headers can't carry).
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   images: {
@@ -33,7 +15,6 @@ const nextConfig: NextConfig = {
       {
         source: "/:path*",
         headers: [
-          { key: "Content-Security-Policy", value: contentSecurityPolicy },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-Frame-Options", value: "DENY" },
           { key: "Referrer-Policy", value: "no-referrer" },

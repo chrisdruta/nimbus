@@ -194,6 +194,14 @@ describe("parseQueueOp", () => {
     expect(op).toEqual({ op: "add", track: track(5) });
   });
 
+  test("add: preview rides through the strip", () => {
+    const op = parseQueueOp({
+      op: "add",
+      track: { ...track(5), preview: true },
+    });
+    expect(op).toEqual({ op: "add", track: { ...track(5), preview: true } });
+  });
+
   test("add: rejects javascript: URLs (inherited window validation)", () => {
     const bad = { ...track(5), permalinkUrl: "javascript:alert(1)" };
     expect(parseQueueOp({ op: "add", track: bad })).toBeNull();

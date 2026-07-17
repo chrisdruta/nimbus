@@ -95,6 +95,7 @@ export const TrackRow = memo(function TrackRow({
           ) : (
             track.artist
           )}
+          {track.streamable && track.preview && " · preview"}
           {reposted && " · ↻ repost"}
         </span>
       </span>

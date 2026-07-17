@@ -60,6 +60,15 @@ describe("validateCachedLibrary", () => {
     expect(validateCachedLibrary(record({ tracks: [junk] }))).toBe(false);
   });
 
+  test("preview is optional (legacy caches) but must be a boolean", () => {
+    const withPreview = { ...track(1), preview: true };
+    expect(validateCachedLibrary(record({ tracks: [withPreview] }))).toBe(true);
+    // The default track() helper has no preview — legacy shape.
+    expect(validateCachedLibrary(record())).toBe(true);
+    const junk = { ...track(1), preview: "yes" as unknown as boolean };
+    expect(validateCachedLibrary(record({ tracks: [junk] }))).toBe(false);
+  });
+
   test("rejects wrong version, missing fields, and junk", () => {
     expect(validateCachedLibrary(null)).toBe(false);
     expect(validateCachedLibrary("nope")).toBe(false);

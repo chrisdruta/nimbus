@@ -252,7 +252,8 @@ function isWindowEntry(v: unknown): v is QueueTrack {
     typeof t.durationMs === "number" &&
     Number.isSafeInteger(t.durationMs) &&
     t.durationMs >= 0 &&
-    t.durationMs <= 24 * 60 * 60 * 1000
+    t.durationMs <= 24 * 60 * 60 * 1000 &&
+    (t.preview === undefined || typeof t.preview === "boolean")
   );
 }
 
@@ -277,6 +278,7 @@ export function parseQueueTracks(
     artworkUrl: t.artworkUrl,
     permalinkUrl: t.permalinkUrl,
     durationMs: t.durationMs,
+    ...(t.preview === true ? { preview: true } : {}),
   }));
 }
 
