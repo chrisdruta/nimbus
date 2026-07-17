@@ -5,7 +5,9 @@ import {
   IconChevronDown,
   IconChevronUp,
   IconCloud,
+  IconListStart,
   IconPanelRight,
+  IconPlus,
   IconX,
 } from "@/components/ui/icons";
 import { formatDuration } from "@/lib/format";
@@ -14,7 +16,23 @@ import { canAutoContinue, radioSeedOf } from "@/lib/radio";
 import { sourceKindOf } from "@/lib/sources";
 import type { SharedQueueEntry } from "@/lib/shared-queue";
 import type { FeedRow } from "@/components/slipstream/useSlipstreamFeed";
+import { PanelSection } from "./PanelSection";
 import { usePlayerActions, usePlayerState } from "./PlayerProvider";
+
+const iconBtn =
+  "flex h-6 w-6 cursor-pointer items-center justify-center rounded-full text-muted transition hover:text-white disabled:cursor-default disabled:opacity-30";
+
+function Art({ url }: { url: string | null }) {
+  const art = artworkSized(url, "large");
+  return art ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={art} alt="" className="h-9 w-9 rounded object-cover" />
+  ) : (
+    <div className="flex h-9 w-9 items-center justify-center rounded bg-elem/40 text-muted">
+      <IconCloud size={14} />
+    </div>
+  );
+}
 
 function Row({
   track,
@@ -25,7 +43,6 @@ function Row({
   onClick?: () => void;
   highlight?: boolean;
 }) {
-  const art = artworkSized(track.artworkUrl, "large");
   return (
     <button
       onClick={onClick}
@@ -34,14 +51,7 @@ function Row({
         onClick ? "cursor-pointer hover:bg-white/5" : ""
       }`}
     >
-      {art ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={art} alt="" className="h-9 w-9 rounded object-cover" />
-      ) : (
-        <div className="flex h-9 w-9 items-center justify-center rounded bg-elem/40 text-muted">
-          <IconCloud size={14} />
-        </div>
-      )}
+      <Art url={track.artworkUrl} />
       <div className="min-w-0 flex-1">
         <p className={`truncate text-sm ${highlight ? "text-accent" : ""}`}>
           {track.title}
@@ -73,9 +83,6 @@ function SharedRow({
   isFirst: boolean;
   isLast: boolean;
 }) {
-  const art = artworkSized(entry.artworkUrl, "large");
-  const iconBtn =
-    "flex h-6 w-6 cursor-pointer items-center justify-center rounded-full text-muted transition hover:text-white disabled:cursor-default disabled:opacity-30";
   return (
     <div
       role="button"
@@ -91,14 +98,7 @@ function SharedRow({
         onJump ? "cursor-pointer hover:bg-white/5" : ""
       }`}
     >
-      {art ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={art} alt="" className="h-9 w-9 rounded object-cover" />
-      ) : (
-        <div className="flex h-9 w-9 items-center justify-center rounded bg-elem/40 text-muted">
-          <IconCloud size={14} />
-        </div>
-      )}
+      <Art url={entry.artworkUrl} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm">{entry.title}</p>
         <p className="truncate text-xs text-muted">
@@ -151,14 +151,68 @@ function SharedRow({
   );
 }
 
-/** Who's live, as rows the user can join/leave from. */
+/** A just-played entry: not clickable — jumping back would rewind the
+ * queue. Hover offers non-destructive re-queueing instead. */
+function HistoryRow({
+  track,
+  onQueueNext,
+  onQueueLast,
+}: {
+  track: QueueTrack;
+  onQueueNext?: () => void;
+  onQueueLast?: () => void;
+}) {
+  const hasActions = Boolean(onQueueNext || onQueueLast);
+  return (
+    <div className="group flex w-full items-center gap-3 rounded px-2 py-1.5">
+      <Art url={track.artworkUrl} />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm">{track.title}</p>
+        <p className="truncate text-xs text-muted">{track.artist}</p>
+      </div>
+      {hasActions && (
+        <span className="hidden shrink-0 items-center group-hover:flex">
+          {onQueueNext && (
+            <button
+              aria-label="play next"
+              title="play next"
+              onClick={onQueueNext}
+              className={iconBtn}
+            >
+              <IconListStart size={13} />
+            </button>
+          )}
+          {onQueueLast && (
+            <button
+              aria-label="add to queue"
+              title="add to queue"
+              onClick={onQueueLast}
+              className={iconBtn}
+            >
+              <IconPlus size={13} />
+            </button>
+          )}
+        </span>
+      )}
+      <span
+        className={`shrink-0 text-xs tabular-nums text-muted ${
+          hasActions ? "group-hover:hidden" : ""
+        }`}
+      >
+        {formatDuration(track.durationMs)}
+      </span>
+    </div>
+  );
+}
+
+/** Who's live, as rows the user can join/leave from. The section label
+ * lives in the PanelSection header. */
 function LiveSection({ rows, you }: { rows: FeedRow[]; you: number | null }) {
   const { slipstream } = usePlayerState();
   const actions = usePlayerActions();
 
   return (
     <>
-      <p className="px-2 py-1 text-xs text-muted">listening now</p>
       <ul className="space-y-0.5 pb-2">
         {rows.map((r) => {
           const self = r.hostId === you;
@@ -233,9 +287,10 @@ function LiveSection({ rows, you }: { rows: FeedRow[]; you: number | null }) {
   );
 }
 
-/** Unified right column: live presence up top (when anyone's on), the
- * queue below — one home for everything social + upcoming. Rendered as
- * a persistent, collapsible layout column by AppShell. */
+/** Unified right column, chronological top to bottom: who's listening,
+ * just played, now playing, up next — collapsible sections, one home for
+ * everything social + upcoming. Rendered as a persistent, collapsible
+ * layout column by AppShell. */
 export function SidePanel({
   onClose,
   feed,
@@ -283,6 +338,15 @@ export function SidePanel({
   // The queue engine still holds the parked local queue while following.
   const parkedId = slipstream && queue ? currentTrackId(queue) : null;
   const parked = parkedId !== null ? actions.getMeta(parkedId) : undefined;
+  // Most-recent-first; ids the metadata cache can't resolve are skipped
+  // (e.g. a library track from before a reload). Repeat-one can produce
+  // consecutive duplicates — keys are index-suffixed.
+  const historyRows = queue
+    ? [...queue.history]
+        .map((id) => actions.getMeta(id))
+        .filter((t): t is QueueTrack => t !== undefined)
+        .reverse()
+    : [];
 
   return (
     <div className="flex h-full flex-col">
@@ -344,27 +408,59 @@ export function SidePanel({
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
-        <div className="flex items-center justify-end px-2 py-1">
-          <button
-            role="switch"
-            aria-checked={privateListening}
-            title="hides your listening from the feed — others otherwise see your current track and up to 10 upcoming; sharing a session still shows you"
-            onClick={() => actions.setPrivateListening(!privateListening)}
-            className={`shrink-0 cursor-pointer text-xs transition ${
-              privateListening ? "text-accent" : "text-muted hover:text-white"
-            }`}
-          >
-            private listening
-          </button>
-        </div>
-        {/* Your own row alone just mirrors the media bar — the live section
-            earns its space once someone else is listening. */}
-        {feed.some((r) => r.hostId !== you) && (
+        <PanelSection
+          id="live"
+          title="listening now"
+          count={feed.length || undefined}
+          control={
+            <button
+              role="switch"
+              aria-checked={privateListening}
+              title="hides your listening from the feed — others otherwise see your current track and up to 10 upcoming; sharing a session still shows you"
+              onClick={() => actions.setPrivateListening(!privateListening)}
+              className={`shrink-0 cursor-pointer text-xs transition ${
+                privateListening ? "text-accent" : "text-muted hover:text-white"
+              }`}
+            >
+              private listening
+            </button>
+          }
+        >
           <LiveSection rows={feed} you={you} />
+          {feed.every((r) => r.hostId === you) && (
+            <p className="px-2 py-1.5 text-xs text-muted">
+              no one else is listening
+            </p>
+          )}
+        </PanelSection>
+        {historyRows.length > 0 && (
+          <PanelSection
+            id="history"
+            title="just played"
+            count={historyRows.length}
+            defaultCollapsed
+          >
+            {historyRows.map((t, i) => (
+              <HistoryRow
+                key={`${t.id}-${i}`}
+                track={t}
+                onQueueNext={
+                  !slipstream && !shared
+                    ? () => actions.queueTrack(t, "next")
+                    : undefined
+                }
+                onQueueLast={
+                  !slipstream || shared
+                    ? () => actions.queueTrack(t, "last")
+                    : undefined
+                }
+              />
+            ))}
+          </PanelSection>
         )}
         {current && (
           <>
-            <p className="px-2 py-1 text-xs text-muted">now playing</p>
+            <p className="px-2 py-1 pt-3 text-xs text-muted">now playing</p>
             <Row track={current} highlight />
           </>
         )}
@@ -375,10 +471,11 @@ export function SidePanel({
             nothing queued — play something and it lands here
           </p>
         ) : (
-          <>
-            <div className="flex items-center justify-between gap-2 px-2 py-1 pt-3">
-              <p className="text-xs text-muted">{upNextLabel}</p>
-              {showAutoRadio && (
+          <PanelSection
+            id="upnext"
+            title={upNextLabel}
+            control={
+              showAutoRadio ? (
                 <button
                   role="switch"
                   aria-checked={autoRadio}
@@ -390,8 +487,9 @@ export function SidePanel({
                 >
                   continue with radio
                 </button>
-              )}
-            </div>
+              ) : undefined
+            }
+          >
             {(shared ? shared.entries.length : upNext.length) === 0 && (
               <p className="px-2 py-2 text-sm text-muted">
                 {shared
@@ -401,31 +499,31 @@ export function SidePanel({
                     : "end of queue"}
               </p>
             )}
-          </>
+            {shared
+              ? shared.entries.map((e, i) => (
+                  <SharedRow
+                    key={e.id}
+                    entry={e}
+                    isFirst={i === 0}
+                    isLast={i === shared.entries.length - 1}
+                    onJump={
+                      caps.canJump ? () => actions.jumpToTrack(e.id) : undefined
+                    }
+                    onRemove={() => actions.removeFromSharedQueue(e.id)}
+                    onMove={(dir) => actions.moveInSharedQueue(e.id, dir)}
+                  />
+                ))
+              : upNext.map((t) => (
+                  <Row
+                    key={t.id}
+                    track={t}
+                    onClick={
+                      caps.canJump ? () => actions.jumpToTrack(t.id) : undefined
+                    }
+                  />
+                ))}
+          </PanelSection>
         )}
-        {shared
-          ? shared.entries.map((e, i) => (
-              <SharedRow
-                key={e.id}
-                entry={e}
-                isFirst={i === 0}
-                isLast={i === shared.entries.length - 1}
-                onJump={
-                  caps.canJump ? () => actions.jumpToTrack(e.id) : undefined
-                }
-                onRemove={() => actions.removeFromSharedQueue(e.id)}
-                onMove={(dir) => actions.moveInSharedQueue(e.id, dir)}
-              />
-            ))
-          : upNext.map((t) => (
-              <Row
-                key={t.id}
-                track={t}
-                onClick={
-                  caps.canJump ? () => actions.jumpToTrack(t.id) : undefined
-                }
-              />
-            ))}
       </div>
       {slipstream && parked && (
         <div className="flex items-center justify-between gap-2 border-t border-black/40 px-4 py-3">

@@ -15,6 +15,7 @@ import {
   Heart,
   LayoutGrid,
   ListMusic,
+  ListStart,
   Maximize2,
   Menu,
   Minimize2,
@@ -95,6 +96,9 @@ export const IconFollowing = ({ size = 20, ...p }: IconProps) => (
 );
 export const IconQueue = ({ size = 20, ...p }: IconProps) => (
   <ListMusic size={size} {...p} />
+);
+export const IconListStart = ({ size = 20, ...p }: IconProps) => (
+  <ListStart size={size} {...p} />
 );
 export const IconExpand = ({ size = 20, ...p }: IconProps) => (
   <Maximize2 size={size} {...p} />
