@@ -264,7 +264,7 @@ export function StageView() {
       {mode === "art" ? (
         <div className="absolute inset-0 flex items-center justify-center">
           <div
-            className={`relative aspect-square h-[min(70vmin,72%)] overflow-hidden rounded-xl shadow-2xl ${
+            className={`relative aspect-square h-[min(70vmin,calc(100%-8rem))] overflow-hidden rounded-xl shadow-2xl ${
               (visual as ArtSettings).breathe
                 ? "motion-safe:animate-[stage-breathe_14s_ease-in-out_infinite_alternate]"
                 : ""
@@ -288,8 +288,9 @@ export function StageView() {
           // Absolute so the canvas paints above the (absolute) backdrop
           // layers — in-flow elements would composite beneath them. Scenes
           // with a maxWidth render as a centered column; the backdrop
-          // stays full-bleed.
-          <div className="absolute inset-0 flex justify-center">
+          // stays full-bleed, so the insets read as margin (extra at the
+          // bottom keeps floor-anchored scenes off the media-bar border).
+          <div className="absolute inset-0 flex justify-center px-4 pt-6 pb-8">
             <div
               className="h-full w-full"
               style={{
