@@ -189,7 +189,7 @@ export function TrackActions() {
   };
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="hidden items-center gap-3 lg:flex">
       <button
         aria-label={social?.liked ? "unlike track" : "like track"}
         title={social?.liked ? "unlike" : "like"}

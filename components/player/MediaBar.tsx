@@ -48,9 +48,9 @@ export function MediaBar({
                 onClick={() =>
                   stageOpen ? actions.closeStage() : actions.openStage()
                 }
-                className="hidden cursor-pointer xl:block"
+                className="hidden w-full max-w-28 cursor-pointer lg:block"
               >
-                <VisualizerCanvas className="h-8 w-28" />
+                <VisualizerCanvas className="h-8 w-full" />
               </button>
             )}
           </div>
