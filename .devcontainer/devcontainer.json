@@ -31,6 +31,7 @@
   "containerEnv": {
     "CLAUDE_CONFIG_DIR": "/home/vscode/.agents/claude",
     "CODEX_HOME": "/home/vscode/.agents/codex",
+    "GH_CONFIG_DIR": "/home/vscode/.agents/gh",
     "DISABLE_AUTOUPDATER": "1",
     "PLAYWRIGHT_BROWSERS_PATH": "/home/vscode/.agents/ms-playwright"
   },

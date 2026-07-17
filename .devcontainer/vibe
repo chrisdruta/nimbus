@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Thin wrapper: the real launcher lives in the harness submodule.
+set -euo pipefail
+
+# Resolve symlinks with a loop (stock macOS readlink has no -f).
+self_path="${BASH_SOURCE[0]}"
+while [ -L "$self_path" ]; do
+  link_target="$(readlink "$self_path")"
+  case "$link_target" in
+    /*) self_path="$link_target" ;;
+    *)  self_path="$(dirname -- "$self_path")/$link_target" ;;
+  esac
+done
+here="$(cd -- "$(dirname -- "$self_path")" && pwd)"
+
+if [[ ! -x "$here/harness/vibe" ]]; then
+  echo "Harness launcher not found at .devcontainer/harness/vibe" >&2
+  echo "Missing submodule? Run: git submodule update --init" >&2
+  echo "Pin older than v0.4.0? Update it: see harness docs/updating.md" >&2
+  exit 1
+fi
+
+exec "$here/harness/vibe" "$@"

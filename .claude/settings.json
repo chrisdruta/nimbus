@@ -10,7 +10,9 @@
   "permissions": {
     "deny": [
       "Bash(sudo:*)",
-      "Bash(su:*)"
+      "Bash(su:*)",
+      "Read(./.env)",
+      "Read(./.env.*)"
     ]
   }
 }
