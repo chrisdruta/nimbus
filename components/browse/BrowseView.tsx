@@ -295,7 +295,7 @@ export function BrowseView({
             ))}
         </div>
       ) : (
-        <div className="flex flex-col px-3 pt-3 xl:px-7">
+        <div className="mx-auto flex w-full max-w-list flex-col px-3 pt-3">
           {visible.map((t) => (
             <TrackRow
               key={t.id}

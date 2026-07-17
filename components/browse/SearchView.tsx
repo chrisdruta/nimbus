@@ -234,7 +234,7 @@ export function SearchView() {
                 ))}
             </div>
           ) : (
-            <div className="flex flex-col px-3 pt-6 xl:px-7">
+            <div className="mx-auto flex w-full max-w-list flex-col px-3 pt-6">
               {tracks.map((t) => (
                 <TrackRow
                   key={t.id}

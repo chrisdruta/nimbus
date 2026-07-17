@@ -303,7 +303,7 @@ export function ArtistView({ artistId }: { artistId: number }) {
             Array.from({ length: 12 }, (_, i) => <TileSkeleton key={`s${i}`} />)}
         </div>
       ) : (
-        <div className="flex flex-col px-3 pt-3 xl:px-7">
+        <div className="mx-auto flex w-full max-w-list flex-col px-3 pt-3">
           {tracks.map((t) => (
             <TrackRow
               key={t.id}

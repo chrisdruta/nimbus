@@ -8,6 +8,10 @@
   --color-elem: #404040;
   --color-accent: #ff4200;
   --color-muted: #b3b3b3;
+
+  /* List-view column cap (max-w-list) — full-width rows on wide screens
+   * put the duration a dead half-meter from the title. */
+  --container-list: 62rem;
 }
 
 @theme inline {
