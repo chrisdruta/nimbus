@@ -16,7 +16,7 @@ export function HeaderBand({
   actions?: React.ReactNode;
 }) {
   return (
-    <header className="flex flex-wrap items-end gap-x-6 gap-y-4 bg-gradient-to-b from-black/30 to-transparent px-6 pt-16 pb-6 xl:px-10">
+    <header className="flex flex-wrap items-end gap-x-6 gap-y-4 bg-gradient-to-b from-black/30 to-transparent px-6 pt-16 pb-6 2xl:px-10">
       {artworkUrl && (
         // eslint-disable-next-line @next/next/no-img-element
         <img

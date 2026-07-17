@@ -86,7 +86,7 @@ export function FeedView() {
     <div className="pb-8">
       <div className="sticky top-0 z-20 h-0">
         <div
-          className={`glass flex items-center gap-3 border-b border-white/5 py-2 pr-16 pl-6 transition-opacity duration-200 xl:pl-10 ${
+          className={`glass flex items-center gap-3 border-b border-white/5 py-2 pr-16 pl-6 transition-opacity duration-200 2xl:pl-10 ${
             slim ? "opacity-100" : "pointer-events-none opacity-0"
           }`}
         >
@@ -162,7 +162,7 @@ export function FeedView() {
         </p>
       )}
 
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4 px-6 pt-6 xl:grid-cols-[repeat(auto-fill,minmax(240px,1fr))] xl:gap-6 xl:px-10">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4 px-6 pt-6 2xl:grid-cols-[repeat(auto-fill,minmax(240px,1fr))] 2xl:gap-6 2xl:px-10">
         {items.map(({ track, reposted }) => (
           <TrackTile
             key={track.id}

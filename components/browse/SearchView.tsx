@@ -217,7 +217,7 @@ export function SearchView() {
       {query && tab === "tracks" && (
         <>
           {layout === "grid" ? (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4 px-6 pt-6 xl:grid-cols-[repeat(auto-fill,minmax(240px,1fr))] xl:gap-6 xl:px-10">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4 px-6 pt-6 2xl:grid-cols-[repeat(auto-fill,minmax(240px,1fr))] 2xl:gap-6 2xl:px-10">
               {tracks.map((t) => (
                 <TrackTile
                   key={t.id}
@@ -267,7 +267,7 @@ export function SearchView() {
 
       {query && tab === "artists" && (
         <>
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4 px-6 pt-6 xl:px-10">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4 px-6 pt-6 2xl:px-10">
             {artistList.items.map((a) => (
               <Link
                 key={a.id}

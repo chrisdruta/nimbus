@@ -49,7 +49,7 @@ export function NowPlaying() {
   if (!current) {
     return (
       <div className="flex items-center gap-3 text-sm text-muted">
-        <div className="flex h-16 w-16 items-center justify-center rounded-md bg-elem/40">
+        <div className="flex h-14 w-14 items-center justify-center rounded-md bg-elem/40 2xl:h-16 2xl:w-16">
           <IconCloud size={22} />
         </div>
         nothing playing
@@ -111,9 +111,9 @@ export function NowPlaying() {
       >
         {art ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={art} alt="" className="h-16 w-16 rounded-md object-cover" />
+          <img src={art} alt="" className="h-14 w-14 rounded-md object-cover 2xl:h-16 2xl:w-16" />
         ) : (
-          <div className="flex h-16 w-16 items-center justify-center rounded-md bg-elem/40 text-muted">
+          <div className="flex h-14 w-14 items-center justify-center rounded-md bg-elem/40 text-muted 2xl:h-16 2xl:w-16">
             <IconCloud size={22} />
           </div>
         )}

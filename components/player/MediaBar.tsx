@@ -24,7 +24,7 @@ export function MediaBar({
   // Side columns are asymmetric: track info wants title room, the right
   // cell only holds volume + queue.
   return (
-    <footer className="glass z-30 grid h-24 grid-cols-[minmax(0,1fr)_auto] items-center gap-6 border-t border-white/5 px-5 md:grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)_minmax(0,0.8fr)]">
+    <footer className="glass z-30 grid h-20 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-t border-white/5 px-5 md:grid-cols-[minmax(0,1.6fr)_minmax(0,2fr)_auto] 2xl:h-24 2xl:gap-6">
       <NowPlaying />
 
       {/* Cap the seek width so it doesn't stretch edge-to-edge of its
@@ -34,7 +34,7 @@ export function MediaBar({
           (keeping it centered); the mini viz centers inside the left one,
           splitting the gap between the track-info icons and the shuffle
           button. It toggles the stage. */}
-      <div className="hidden w-full max-w-2xl flex-col items-center gap-2 justify-self-center md:flex xl:max-w-3xl">
+      <div className="hidden w-full max-w-2xl flex-col items-center gap-2 justify-self-center md:flex 2xl:max-w-3xl">
         <div className="flex w-full items-center">
           <div className="flex min-w-0 flex-1 items-center justify-center">
             {current && (

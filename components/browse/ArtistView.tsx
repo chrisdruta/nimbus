@@ -173,7 +173,7 @@ export function ArtistView({ artistId }: { artistId: number }) {
 
   return (
     <div className="pb-8">
-      <header className="bg-gradient-to-b from-black/30 to-transparent px-6 pt-6 pb-6 xl:px-10">
+      <header className="bg-gradient-to-b from-black/30 to-transparent px-6 pt-6 pb-6 2xl:px-10">
         <button
           onClick={goBack}
           className="flex cursor-pointer items-center gap-1.5 text-xs text-muted transition hover:text-white"
@@ -249,7 +249,7 @@ export function ArtistView({ artistId }: { artistId: number }) {
         </div>
       </header>
 
-      <div className="flex items-center justify-end gap-1.5 px-6 xl:px-10">
+      <div className="flex items-center justify-end gap-1.5 px-6 2xl:px-10">
         <button
           aria-label="grid view"
           title="grid view"
@@ -288,7 +288,7 @@ export function ArtistView({ artistId }: { artistId: number }) {
       )}
 
       {layout === "grid" ? (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4 px-6 pt-3 xl:grid-cols-[repeat(auto-fill,minmax(240px,1fr))] xl:gap-6 xl:px-10">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4 px-6 pt-3 2xl:grid-cols-[repeat(auto-fill,minmax(240px,1fr))] 2xl:gap-6 2xl:px-10">
           {tracks.map((t) => (
             <TrackTile
               key={t.id}

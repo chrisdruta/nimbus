@@ -61,7 +61,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </button>
         {/* Sidebar: static ≥md, drawer below */}
         <aside
-          className="glass hidden w-60 shrink-0 md:block xl:w-72"
+          className="glass hidden w-60 shrink-0 md:block 2xl:w-72"
           onClickCapture={closeStageOnNav}
         >
           <Sidebar />
@@ -91,7 +91,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         {/* Queue/slipstream column: persistent on desktop, collapsible */}
         {panelOpen && (
-          <aside className="glass hidden w-80 shrink-0 border-l border-white/5 md:block xl:w-96">
+          <aside className="glass hidden w-72 shrink-0 border-l border-white/5 md:block 2xl:w-96">
             <SidePanel onClose={() => setPanel(false)} feed={feed} you={you} />
           </aside>
         )}
