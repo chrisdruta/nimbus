@@ -17,6 +17,7 @@ import { formatReset } from "@/lib/format";
 import {
   createQueue,
   currentTrackId,
+  enqueue,
   integrate,
   jumpTo,
   loadQueue,
@@ -235,6 +236,10 @@ export interface PlayerActions {
   closeStage(): void;
   getMeta(trackId: number): QueueTrack | undefined;
   upcomingTracks(n: number): QueueTrack[];
+  /** Non-destructive enqueue into the local queue ("next" lands right
+   * after the current track). In a shared session it delegates to the
+   * session queue (append-only); in plain follow mode it's a no-op. */
+  queueTrack(track: QueueTrack, where: "next" | "last"): void;
   /** Follow a member's live queue (read-only). Parks the local queue. */
   joinSlipstream(hostId: number): Promise<void>;
   /** Back to the parked local queue, exactly as it was left. */
@@ -1532,6 +1537,27 @@ export function PlayerProvider({
       return hostSessionRef.current ? userId : null;
     };
 
+    const addToShared = (track: QueueTrack): void => {
+      const hostId = sessionHostId();
+      if (hostId === null) return;
+      // Strip to the wire shape — callers may hand us richer objects.
+      const clean: QueueTrack = {
+        id: track.id,
+        title: track.title,
+        artist: track.artist,
+        ...(track.artistId === undefined ? {} : { artistId: track.artistId }),
+        artistUrl: track.artistUrl,
+        artworkUrl: track.artworkUrl,
+        permalinkUrl: track.permalinkUrl,
+        durationMs: track.durationMs,
+        ...(track.preview === true ? { preview: true } : {}),
+      };
+      metaRef.current.set(clean.id, clean);
+      void postQueueOp(hostId, { op: "add", track: clean }).then((ok) => {
+        if (ok) toast(`queued for the session · ${clean.title}`);
+      });
+    };
+
     return {
       playFrom(sourceKey, tracks, startTrackId, opts) {
         // Choosing your own music is an implicit leave / stop-sharing.
@@ -1829,26 +1855,30 @@ export function PlayerProvider({
       },
 
       addToSharedQueue(track) {
-        const hostId = sessionHostId();
-        if (hostId === null) return;
-        // Strip to the wire shape — callers may hand us richer objects.
-        const clean: QueueTrack = {
-          id: track.id,
-          title: track.title,
-          artist: track.artist,
-          ...(track.artistId === undefined
-            ? {}
-            : { artistId: track.artistId }),
-          artistUrl: track.artistUrl,
-          artworkUrl: track.artworkUrl,
-          permalinkUrl: track.permalinkUrl,
-          durationMs: track.durationMs,
-          ...(track.preview === true ? { preview: true } : {}),
-        };
-        metaRef.current.set(clean.id, clean);
-        void postQueueOp(hostId, { op: "add", track: clean }).then((ok) => {
-          if (ok) toast(`queued for the session · ${clean.title}`);
-        });
+        addToShared(track);
+      },
+
+      queueTrack(track, where) {
+        // Shared session (host or guest): the session queue is the queue —
+        // append there. The wire is append-only, so `where` is moot.
+        if (sessionHostId() !== null) {
+          addToShared(track);
+          return;
+        }
+        // Plain follow mode: the local queue is parked — leave it alone.
+        // (The UI hides the buttons; media-key-style belt and braces.)
+        if (followRef.current) return;
+        const q = queueRef.current;
+        if (!q) return;
+        metaRef.current.set(track.id, track);
+        const nq = enqueue(q, track.id, where);
+        if (nq === q) return;
+        setQueue(nq);
+        toast(
+          where === "next"
+            ? `up next · ${track.title}`
+            : `queued · ${track.title}`,
+        );
       },
 
       removeFromSharedQueue(trackId) {
