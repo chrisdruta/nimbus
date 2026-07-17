@@ -32,6 +32,8 @@ window.addEventListener("unhandledrejection", function (e) {
   var el = document.getElementById("cast-error-probe");
   if (el && !el.textContent) el.textContent = "rejection: " + String(e.reason);
 });
+var ua = document.getElementById("cast-ua-probe");
+if (ua) ua.textContent = navigator.userAgent;
 `;
 
 export default function CastPage() {
@@ -65,6 +67,21 @@ export default function CastPage() {
       >
         boot:html
       </div>
+      <div
+        id="cast-ua-probe"
+        style={{
+          position: "fixed",
+          left: 8,
+          bottom: 8,
+          zIndex: 50,
+          maxWidth: "70vw",
+          overflow: "hidden",
+          whiteSpace: "nowrap",
+          fontFamily: "monospace",
+          fontSize: 11,
+          color: "#555",
+        }}
+      />
       <ReceiverApp />
     </>
   );
