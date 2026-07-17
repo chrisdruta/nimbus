@@ -1,8 +1,37 @@
 # Cast to TV (Google Cast) — implementation plan
 
-Status: M-a implemented and playing on real hardware (2026-07-17);
-validation checklist in progress, M-b next. Companion to the "Cast to
-TV" entry in `ROADMAP.md`.
+Status: M-a + M-b shipped and working on real hardware (2026-07-17):
+audio, handoff, transport, device volume, scene control from the
+sender, up-next strip. Remaining: per-scene TV performance (see below)
+and the deferred M-c items. Companion to the "Cast to TV" entry in
+`ROADMAP.md`.
+
+## Open: TV scene performance (next session's starting point)
+
+Per-scene state on the Google TV Streamer after the first tuning pass
+(TV profile dpr 0.75 / 40 bars / 30fps cap; lowPower flag skipping
+bars' beat bloom and scope's glow strokes; roundRect polyfilled):
+
+- **ridge, fourier: smooth.** art: free.
+- **bars: still ~15fps and reads as lagging behind the audio.** The
+  bloom skip wasn't it. Next suspects: FrameAnalyzer's per-frame work at
+  fftSize 8192 (≈4096-bin aggregation loops in JS — trivial on desktop,
+  maybe not here), and the ~186ms analysis window + smoothing reading
+  as audio delay. Idea: receiver-specific analyser config (fftSize
+  2048/4096 via a buildAudioGraph option) — piano is the only scene
+  needing 8192's semitone resolution.
+- **scope: borderline** after the glow skip. Trail (full-canvas
+  destination-out per frame) is the remaining full-screen op.
+- **piano: renders (polyfill works) but laggy** — dozens of
+  roundRect+gradient key draws per frame, plus it *does* need fft 8192.
+  Maybe a reduced-key TV variant.
+
+Profile properly instead of guessing next time: the receiver is
+inspectable on registered dev devices — cast, then chrome://inspect
+(add `<tv-ip>:9222` under network targets) → Performance tab on the
+live receiver. `[nimbus-cast]` console breadcrumbs show the message
+flow; `?debug=1` on a desktop tab stubs CAF for message-injection
+testing without hardware.
 
 ## Hardware findings (Google TV Streamer, 2026-07-17)
 

@@ -41,28 +41,16 @@ project 30 days) trends toward its cap in the dashboard.
   foreign-playlist detail path (the current `/playlists/[id]` page only
   resolves titles for your own playlists). Deferred from M13.
 - **Tauri client** — native shell on this same backend.
-- **Cast to TV (Google Cast)** — play the stage + viz on a television.
-  Shape: a Custom Web Receiver (a small self-hosted page — can be a route
-  on this same Vercel app; $5 one-time Cast Developer Console
-  registration, dev devices registered by serial), with the existing app
-  as sender via the Cast Web Sender SDK (Chrome-only, HTTPS — both
-  already true). The sender resolves plays through the normal
-  `/api/tracks/[id]/play` quota path and ships the signed CDN URL to the
-  receiver over the Cast custom-message channel; the receiver's `<audio>`
-  streams direct from the CDN, so the token-broker constraint holds and
-  no realtime infra is needed (the Cast channel is device-local). The
-  receiver is Chromium, so `lib/viz/` and the scenes reuse unchanged —
-  the M1 CORS verdict (`cf-media.sndcdn.com` serves ACAO:*) should carry
-  over, but verify `MediaElementSource` on real hardware first. Main
-  risk: weak CPUs on old Chromecast dongles — plan a "TV profile" of the
-  SceneHost throttles (fewer bars/particles, 30fps cap); recent
-  Google TV devices are fine. _Status (2026-07-17): M-a code landed —
-  wire protocol + retry policy in `lib/cast.ts` (tested), sender seam in
-  PlayerProvider, `/cast` receiver page (art-mode stage, `?debug=1`
-  harness), CSP matcher exclusion. Full design in
-  `docs/plans/cast-to-tv.md`. Blocked on: Cast Developer Console
-  registration (app id → `NEXT_PUBLIC_CAST_APP_ID`, device serials) and
-  the on-hardware validation checklist; viz-on-TV is M-b._
+- **Cast TV scene performance (Cast M-c)** — bars still ~15fps on the
+  Streamer (and reads as trailing the audio), piano laggy, scope
+  borderline; ridge/fourier smooth. Next: profile the live receiver via
+  chrome://inspect `<tv-ip>:9222` instead of guessing; leading suspect
+  is FrameAnalyzer's per-frame bin aggregation at fftSize 8192 — try a
+  receiver-specific analyser size (only piano needs 8192). Full state +
+  ideas in `docs/plans/cast-to-tv.md` "Open: TV scene performance".
+  Other deferred M-c items there: TV-remote/media-session support,
+  receiver-side loudness measurement, casting-while-hosting, stale-URL
+  and album-length soak tests.
 
 Direction decisions (2026-07-13): **mobile is out of scope** for now —
 nobody in the friend group wants it. **Viz stays pure TS + AnalyserNode —
@@ -73,6 +61,35 @@ OffscreenCanvas worker → WebGL/WebGPU → only then WASM+SIMD. Staying
 plain-web also keeps a future Cast receiver a plain page.
 
 ## Shipped
+
+### Cast to TV, M-a + M-b (2026-07-17)
+
+The roadmap shape held end to end: a Custom Web Receiver at `/cast` on
+this same app (registered in the Cast Developer Console, app id in
+`NEXT_PUBLIC_CAST_APP_ID`), the existing app as sender. The sender
+resolves plays through the normal quota path and ships the signed CDN
+URL + track metadata over `urn:x-cast:com.nimbus.cast` (validators,
+extrapolation, retry policy pure + tested in `lib/cast.ts`); the
+receiver plays via the shared hls.js loader + audio graph and renders
+the stage — art mode and the viz scenes under a TV profile (30fps cap,
+dpr 0.75, 40 bars, lowPower garnish skips), with an up-next strip.
+The stage's corner picker drives the TV's scene while casting;
+PlayerProvider grew a contained output seam (branch at resolveAndPlay,
+receiver `ended` → normal advance, positionMsNow/seekTo playhead
+abstraction, device-volume routing, zero-quota handoffs both ways).
+Casting and slipstream modes are mutually exclusive in v1.
+
+Validated on a Google TV Streamer: cast mid-track at position,
+play/pause/seek/next from the sender, device volume, track advance,
+up-next, scene switching, cast-end park-and-resume locally. Hardware
+lessons (all load-bearing, details in `docs/plans/cast-to-tv.md`): the
+Cast runtime is ~Chrome 85–93 behind a version-masked UA — hence the
+`browserslist` chrome-87 pin (ES2022 static blocks crashed the parser),
+the Tailwind-free inline-styled `/cast` surface (Tailwind v4 needs
+Chrome 111+), a `roundRect` polyfill, and the receiver's on-screen
+error/boot probes (`?debug=1`), since a TV has no console and the
+platform kills an app whose start never completes. Scene perf tuning
+continues as Cast M-c under Next / ideas.
 
 ### Queue panel: sections + just-played history (2026-07-17)
 
