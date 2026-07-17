@@ -80,6 +80,21 @@ export default function CastPage() {
           color: "#555",
         }}
       />
+      {/* Runs after the divs exist: without ?debug the boot/UA probes
+          hide (the error probe stays — it is invisible until something
+          actually breaks, exactly when a TV needs to talk). */}
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `
+if (!/[?&]debug/.test(location.search)) {
+  var sp = document.getElementById("cast-stage-probe");
+  var up = document.getElementById("cast-ua-probe");
+  if (sp) sp.style.display = "none";
+  if (up) up.style.display = "none";
+}
+`,
+        }}
+      />
       <ReceiverApp />
     </>
   );

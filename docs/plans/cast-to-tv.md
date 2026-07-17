@@ -1,7 +1,30 @@
 # Cast to TV (Google Cast) — implementation plan
 
-Status: planned, not started. Scoped 2026-07-17; implement when ready.
-Companion to the "Cast to TV" entry under Next / ideas in `ROADMAP.md`.
+Status: M-a implemented and playing on real hardware (2026-07-17);
+validation checklist in progress, M-b next. Companion to the "Cast to
+TV" entry in `ROADMAP.md`.
+
+## Hardware findings (Google TV Streamer, 2026-07-17)
+
+- **The Cast Web Runtime is old and hides its version.** Its UA is a
+  bare `AppleWebKit/537.36` string with no `Chrome/XX` token. Bracketed
+  empirically: ES2022 class static blocks (Chrome 94+) crash the parser;
+  `??=` (Chrome 85+) runs — so the engine is ~85–93. Hence the
+  `"browserslist": ["chrome 87"]` pin in package.json: **do not remove
+  it** or the receiver bundle stops parsing on the TV and every cast
+  launch dies in the platform's ~10s timeout with a blank-but-rendered
+  page (SSR HTML shows, JS never runs).
+- **Tailwind v4 output doesn't parse there either** (oklch, color-mix,
+  @layer need Chrome 111+), so ReceiverApp styles itself with plain
+  inline CSS and a local decode-then-swap artwork component — keep the
+  /cast surface Tailwind-free.
+- **The custom pipeline works on hardware**: hls.js → MSE → audio
+  element plays, and the receiver's `ready` handshake needed the
+  SENDER_CONNECTED re-announce plus a 3s sender-side fallback (a boot
+  broadcast races the channel and drops).
+- Boot/UA probes on /cast are gated behind `?debug`; the on-screen
+  error line always renders on failure (TVs have no console — the
+  receiver page must self-report).
 
 ## Context
 
