@@ -24,7 +24,7 @@ export function MediaBar({
   // Side columns are symmetric (1fr each) so the center column — and the
   // play button on its center line — sits on the true middle of the bar.
   return (
-    <footer className="glass z-30 grid h-20 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-t border-white/5 px-5 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)] 2xl:h-24 2xl:gap-6">
+    <footer className="glass z-30 grid h-22 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-t border-white/5 px-5 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)] 2xl:h-26 2xl:gap-6">
       <NowPlaying />
 
       {/* Cap the seek width so it doesn't stretch edge-to-edge of its
