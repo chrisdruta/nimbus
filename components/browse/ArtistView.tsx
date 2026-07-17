@@ -173,31 +173,31 @@ export function ArtistView({ artistId }: { artistId: number }) {
 
   return (
     <div className="pb-8">
-      <header className="bg-gradient-to-b from-black/30 to-transparent px-6 pt-6 pb-6 2xl:px-10">
+      <header className="bg-gradient-to-b from-black/30 to-transparent px-6 pt-6 pb-4 2xl:px-10">
         <button
           onClick={goBack}
           className="flex cursor-pointer items-center gap-1.5 text-xs text-muted transition hover:text-white"
         >
           <IconArrowLeft size={14} /> back
         </button>
-        <div className="mt-6 flex flex-wrap items-end gap-x-6 gap-y-4">
+        <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-3">
           {avatar ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={avatar}
               alt=""
-              className="h-32 w-32 rounded-full object-cover shadow-2xl xl:h-40 xl:w-40"
+              className="h-24 w-24 rounded-full object-cover shadow-xl"
             />
           ) : (
-            <div className="flex h-32 w-32 items-center justify-center rounded-full bg-elem/40 text-muted shadow-2xl xl:h-40 xl:w-40">
-              <IconCloud size={40} />
+            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-elem/40 text-muted shadow-xl">
+              <IconCloud size={32} />
             </div>
           )}
-          <div className="min-w-0 flex-1 basis-64">
-            <h1 className="truncate text-4xl font-bold xl:text-5xl">
+          <div className="min-w-0 flex-1 basis-52">
+            <h1 className="truncate text-2xl font-bold 2xl:text-3xl">
               {artist?.username ?? (metaGone ? "unknown artist" : "…")}
             </h1>
-            <p className="mt-2 text-sm text-muted">
+            <p className="mt-1 truncate text-xs text-muted 2xl:text-sm">
               {subtitle}
               {artist && (
                 <>
@@ -214,7 +214,7 @@ export function ArtistView({ artistId }: { artistId: number }) {
               )}
             </p>
           </div>
-          <div className="flex items-center gap-3 pb-1">
+          <div className="flex shrink-0 items-center gap-2">
             <button
               onClick={() =>
                 actions.playFrom(sourceId, tracks, undefined, {
@@ -222,14 +222,14 @@ export function ArtistView({ artistId }: { artistId: number }) {
                 })
               }
               disabled={playableCount === 0}
-              className="flex cursor-pointer items-center gap-2 rounded-full bg-accent px-5 py-2 text-sm font-medium text-white transition hover:scale-105 disabled:cursor-default disabled:opacity-40"
+              className="flex cursor-pointer items-center gap-2 rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-white transition hover:scale-105 disabled:cursor-default disabled:opacity-40"
             >
               <IconShuffle size={16} /> Shuffle
             </button>
             <button
               onClick={() => actions.playFrom(sourceId, tracks)}
               disabled={playableCount === 0}
-              className="flex cursor-pointer items-center gap-2 rounded-full border border-elem px-5 py-2 text-sm text-muted transition hover:border-muted hover:text-white disabled:cursor-default disabled:opacity-40"
+              className="flex cursor-pointer items-center gap-2 rounded-full border border-elem px-4 py-1.5 text-sm text-muted transition hover:border-muted hover:text-white disabled:cursor-default disabled:opacity-40"
             >
               <IconPlay size={16} /> Play
             </button>
@@ -237,7 +237,7 @@ export function ArtistView({ artistId }: { artistId: number }) {
               onClick={toggleFollow}
               disabled={!meta}
               aria-pressed={meta?.followed ?? false}
-              className={`cursor-pointer rounded-full px-5 py-2 text-sm transition disabled:cursor-default disabled:opacity-40 ${
+              className={`cursor-pointer rounded-full px-4 py-1.5 text-sm transition disabled:cursor-default disabled:opacity-40 ${
                 meta?.followed
                   ? "border border-accent text-accent hover:border-muted hover:text-muted"
                   : "border border-elem text-muted hover:border-muted hover:text-white"

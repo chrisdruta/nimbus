@@ -201,14 +201,14 @@ export function BrowseView({
                 actions.playFrom(key, tracks, undefined, { shuffle: true })
               }
               disabled={playableCount === 0}
-              className="flex cursor-pointer items-center gap-2 rounded-full bg-accent px-5 py-2 text-sm font-medium text-white transition hover:scale-105 disabled:cursor-default disabled:opacity-40"
+              className="flex cursor-pointer items-center gap-2 rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-white transition hover:scale-105 disabled:cursor-default disabled:opacity-40"
             >
               <IconShuffle size={16} /> Shuffle
             </button>
             <button
               onClick={() => actions.playFrom(key, tracks)}
               disabled={playableCount === 0}
-              className="flex cursor-pointer items-center gap-2 rounded-full border border-elem px-5 py-2 text-sm text-muted transition hover:border-muted hover:text-white disabled:cursor-default disabled:opacity-40"
+              className="flex cursor-pointer items-center gap-2 rounded-full border border-elem px-4 py-1.5 text-sm text-muted transition hover:border-muted hover:text-white disabled:cursor-default disabled:opacity-40"
             >
               <IconPlay size={16} /> Play
             </button>
