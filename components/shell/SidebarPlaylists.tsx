@@ -41,8 +41,15 @@ export function SidebarPlaylists({ onNavigate }: { onNavigate?: () => void }) {
   if (playlists.length === 0) return null;
 
   return (
-    <SidebarSection id="playlists" title="Playlists">
-      <ul className="space-y-0.5">
+    // The one section that scrolls: it takes the sidebar's leftover height
+    // and keeps its scrollbar (gutter reserved so appearing doesn't shift
+    // the titles) to itself — the header chunks above never move.
+    <SidebarSection
+      id="playlists"
+      title="Playlists"
+      className="flex min-h-0 flex-1 flex-col"
+    >
+      <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto [scrollbar-gutter:stable]">
         {playlists.map((p) => {
           const href = `/playlists/${p.id}`;
           const active = pathname === href;

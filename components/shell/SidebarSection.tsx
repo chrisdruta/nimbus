@@ -10,10 +10,14 @@ const isBoolean = (v: unknown): v is boolean => typeof v === "boolean";
 export function SidebarSection({
   id,
   title,
+  className = "shrink-0",
   children,
 }: {
   id: string;
   title: string;
+  /** Wrapper classes. Default keeps the section its natural height; a
+   * section that owns its own scroll passes flex sizing instead. */
+  className?: string;
   children: ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -30,13 +34,11 @@ export function SidebarSection({
   };
 
   return (
-    // shrink-0: flex children of the scrolling nav must keep their natural
-    // height or their content paints over the next section.
-    <div className="shrink-0">
+    <div className={className}>
       <button
         onClick={toggle}
         aria-expanded={!collapsed}
-        className="group mb-2 flex w-full cursor-pointer items-center justify-between text-xs tracking-widest text-muted uppercase transition hover:text-white"
+        className="group mb-2 flex w-full shrink-0 cursor-pointer items-center justify-between text-xs tracking-widest text-muted uppercase transition hover:text-white"
       >
         {title}
         <IconChevronUp

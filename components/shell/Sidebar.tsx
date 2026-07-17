@@ -36,8 +36,11 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   }, []);
 
   return (
+    // The nav itself only ever scrolls on pathologically short viewports —
+    // the playlists section owns day-to-day scrolling so the chunks above
+    // it stay put.
     <nav className="flex h-full flex-col gap-6 overflow-y-auto p-5">
-      <div>
+      <div className="shrink-0">
         <Link href="/library" className="font-logo text-3xl text-accent">
           nimbus
         </Link>
@@ -52,7 +55,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       {me && (
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-3">
           {me.avatarUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -92,7 +95,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         </div>
       )}
 
-      <div>
+      <div className="shrink-0">
         <p className="mb-2 text-xs tracking-widest text-muted uppercase">
           Your library
         </p>
