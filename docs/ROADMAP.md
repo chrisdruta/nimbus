@@ -68,6 +68,23 @@ plain-web also keeps a future Cast receiver a plain page.
 
 ## Shipped
 
+### Queue panel: sections + just-played history (2026-07-17)
+
+The side panel now reads chronologically in collapsible, pref-persisted
+sections (PanelSection): listening now (always present with count,
+private-listening switch in its header, quiet empty line), just played
+(collapsed by default — the engine's existing 50-entry history surfaced
+as rows with non-destructive hover actions), now playing, up next
+(label + continue-with-radio switch in the section header). New pure
+`enqueue(q, id, "next"|"last")` in lib/queue.ts (duplicate-free moves,
+played-prefix consumption with position repair, sourceOrder membership
+for un-shuffle survival, unplayable cleared as a retry; 10 new tests)
+behind a `queueTrack` action that delegates to the shared-session queue
+when one is active and no-ops in plain follow mode. Validated in-browser
+at 1280x650/2560x1440: play-next landed after current, add-to-queue at
+the true tail, duplicate-free order in persisted state, collapse states
+survive reload, no horizontal overflow.
+
 ### Compact desktop tier — layout re-centering (2026-07-17)
 
 The sizing system was re-centered on Chris's real daily viewport
