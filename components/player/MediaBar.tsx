@@ -1,6 +1,6 @@
 "use client";
 
-import { NowPlaying } from "./NowPlaying";
+import { NowPlaying, TrackActions } from "./NowPlaying";
 import { TransportControls } from "./TransportControls";
 import { SeekBar } from "./SeekBar";
 import { VolumeControl } from "./VolumeControl";
@@ -21,22 +21,26 @@ export function MediaBar({
   const { current, stageOpen } = usePlayerState();
   const actions = usePlayerActions();
 
-  // Side columns are asymmetric: track info wants title room, the right
-  // cell only holds volume + queue.
+  // Side columns are symmetric (1fr each) so the center column — and the
+  // play button on its center line — sits on the true middle of the bar.
   return (
-    <footer className="glass z-30 grid h-20 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-t border-white/5 px-5 md:grid-cols-[minmax(0,1.6fr)_minmax(0,2fr)_auto] 2xl:h-24 2xl:gap-6">
+    <footer className="glass z-30 grid h-20 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-t border-white/5 px-5 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)] 2xl:h-24 2xl:gap-6">
       <NowPlaying />
 
       {/* Cap the seek width so it doesn't stretch edge-to-edge of its
           column on wide screens; keep the whole block cell-centered. The
           seek row only exists once a track is loaded — an idle 0:00–0:00
-          scrubber is just noise. Equal flex spacers flank the transport
-          (keeping it centered); the mini viz centers inside the left one,
-          splitting the gap between the track-info icons and the shuffle
-          button. It toggles the stage. */}
+          scrubber is just noise. Equal flex spacers flank the transport,
+          keeping it centered: like/follow/radio anchor the left one, the
+          mini viz (stage toggle) anchors the right one, both sitting
+          above the scrubber's ends. */}
       <div className="hidden w-full max-w-2xl flex-col items-center gap-2 justify-self-center md:flex 2xl:max-w-3xl">
         <div className="flex w-full items-center">
-          <div className="flex min-w-0 flex-1 items-center justify-center">
+          <div className="flex min-w-0 flex-1 items-center justify-start">
+            <TrackActions />
+          </div>
+          <TransportControls />
+          <div className="flex min-w-0 flex-1 items-center justify-end">
             {current && (
               <button
                 aria-label={stageOpen ? "close stage" : "open stage"}
@@ -50,13 +54,11 @@ export function MediaBar({
               </button>
             )}
           </div>
-          <TransportControls />
-          <div className="min-w-0 flex-1" />
         </div>
         {current && <SeekBar />}
       </div>
 
-      <div className="flex items-center justify-end md:justify-center">
+      <div className="flex items-center justify-end">
         {/* compact transport for small screens */}
         <div className="md:hidden">
           <TransportControls />

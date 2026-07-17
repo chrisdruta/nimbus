@@ -27,24 +27,6 @@ interface Social {
 export function NowPlaying() {
   const { current, slipstream, stageOpen } = usePlayerState();
   const actions = usePlayerActions();
-  const toast = useToast();
-
-  // Like/follow state for the current track, fetched lazily; null while
-  // unknown (buttons render disabled). Toggles are optimistic with revert.
-  const [social, setSocial] = useState<Social | null>(null);
-  useEffect(() => {
-    setSocial(null);
-    const id = current?.id;
-    if (id === undefined) return;
-    const ctrl = new AbortController();
-    fetch(`/api/tracks/${id}/social`, { signal: ctrl.signal })
-      .then((res) => (res.ok ? (res.json() as Promise<Social>) : null))
-      .then((s) => {
-        if (s && !ctrl.signal.aborted) setSocial(s);
-      })
-      .catch(() => {});
-    return () => ctrl.abort();
-  }, [current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!current) {
     return (
@@ -56,39 +38,6 @@ export function NowPlaying() {
       </div>
     );
   }
-
-  const toggleLike = () => {
-    if (!social) return;
-    const next = !social.liked;
-    setSocial({ ...social, liked: next });
-    fetch(`/api/tracks/${current.id}/like`, {
-      method: next ? "PUT" : "DELETE",
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error(`like ${res.status}`);
-      })
-      .catch(() => {
-        setSocial((s) => (s ? { ...s, liked: !next } : s));
-        toast("couldn't update like", "error");
-      });
-  };
-
-  const toggleFollow = () => {
-    if (!social) return;
-    const next = !social.artistFollowed;
-    setSocial({ ...social, artistFollowed: next });
-    fetch(`/api/artists/${social.artistId}/follow`, {
-      method: next ? "PUT" : "DELETE",
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error(`follow ${res.status}`);
-        toast(next ? `following ${current.artist}` : `unfollowed ${current.artist}`);
-      })
-      .catch(() => {
-        setSocial((s) => (s ? { ...s, artistFollowed: !next } : s));
-        toast("couldn't update follow", "error");
-      });
-  };
 
   const art = artworkSized(current.artworkUrl, "t300x300");
 
@@ -174,12 +123,79 @@ export function NowPlaying() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Like/follow/radio for the current track. Lives on the transport row in
+ * the media bar (left of the controls, mirroring the mini viz) so the
+ * track-info cell stays symmetric with the volume cell and the play
+ * button sits on the true center line. */
+export function TrackActions() {
+  const { current } = usePlayerState();
+  const actions = usePlayerActions();
+  const toast = useToast();
+
+  // Like/follow state for the current track, fetched lazily; null while
+  // unknown (buttons render disabled). Toggles are optimistic with revert.
+  const [social, setSocial] = useState<Social | null>(null);
+  useEffect(() => {
+    setSocial(null);
+    const id = current?.id;
+    if (id === undefined) return;
+    const ctrl = new AbortController();
+    fetch(`/api/tracks/${id}/social`, { signal: ctrl.signal })
+      .then((res) => (res.ok ? (res.json() as Promise<Social>) : null))
+      .then((s) => {
+        if (s && !ctrl.signal.aborted) setSocial(s);
+      })
+      .catch(() => {});
+    return () => ctrl.abort();
+  }, [current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!current) return null;
+
+  const toggleLike = () => {
+    if (!social) return;
+    const next = !social.liked;
+    setSocial({ ...social, liked: next });
+    fetch(`/api/tracks/${current.id}/like`, {
+      method: next ? "PUT" : "DELETE",
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(`like ${res.status}`);
+      })
+      .catch(() => {
+        setSocial((s) => (s ? { ...s, liked: !next } : s));
+        toast("couldn't update like", "error");
+      });
+  };
+
+  const toggleFollow = () => {
+    if (!social) return;
+    const next = !social.artistFollowed;
+    setSocial({ ...social, artistFollowed: next });
+    fetch(`/api/artists/${social.artistId}/follow`, {
+      method: next ? "PUT" : "DELETE",
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(`follow ${res.status}`);
+        toast(next ? `following ${current.artist}` : `unfollowed ${current.artist}`);
+      })
+      .catch(() => {
+        setSocial((s) => (s ? { ...s, artistFollowed: !next } : s));
+        toast("couldn't update follow", "error");
+      });
+  };
+
+  return (
+    <div className="flex items-center gap-3">
       <button
         aria-label={social?.liked ? "unlike track" : "like track"}
         title={social?.liked ? "unlike" : "like"}
         disabled={!social}
         onClick={toggleLike}
-        className={`ml-1 shrink-0 cursor-pointer transition disabled:cursor-default disabled:opacity-40 ${
+        className={`shrink-0 cursor-pointer transition disabled:cursor-default disabled:opacity-40 ${
           social?.liked ? "text-accent" : "text-muted hover:text-white"
         }`}
       >
