@@ -258,6 +258,10 @@ export function ReceiverApp() {
   // the custom channel.
   useEffect(() => {
     stage("boot:react");
+    // The page's inline script runs before the probe divs are parsed —
+    // paint the UA here instead, where the DOM is complete.
+    const ua = document.getElementById("cast-ua-probe");
+    if (ua) ua.textContent = navigator.userAgent;
     if (new URLSearchParams(window.location.search).has("debug")) {
       setMode("debug");
       stage("debug");

@@ -32,8 +32,6 @@ window.addEventListener("unhandledrejection", function (e) {
   var el = document.getElementById("cast-error-probe");
   if (el && !el.textContent) el.textContent = "rejection: " + String(e.reason);
 });
-var ua = document.getElementById("cast-ua-probe");
-if (ua) ua.textContent = navigator.userAgent;
 `;
 
 export default function CastPage() {
