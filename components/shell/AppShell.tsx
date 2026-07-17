@@ -46,7 +46,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="relative isolate grid h-dvh grid-rows-[minmax(0,1fr)_auto]">
       <AmbientBackdrop />
-      <div className="relative flex min-h-0">
+      {/* min-w-0: without it the shell grid's implicit column sizes to this
+          row's min-content — nowrap track titles push the whole document
+          wider than the viewport (clipped queue, sideways scroll jumps). */}
+      <div className="relative flex min-h-0 min-w-0">
         {/* Anchored at the row level (not inside the scrolling main) so
             they stay put while the library scrolls. */}
         <button

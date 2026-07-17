@@ -48,7 +48,7 @@ function Row({
         </p>
         <p className="truncate text-xs text-muted">{track.artist}</p>
       </div>
-      <span className="text-xs tabular-nums text-muted">
+      <span className="shrink-0 text-xs tabular-nums text-muted">
         {formatDuration(track.durationMs)}
       </span>
     </button>
