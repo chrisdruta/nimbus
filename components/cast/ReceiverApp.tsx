@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -11,6 +12,7 @@ import Hls from "hls.js";
 import {
   CAST_NAMESPACE,
   STATUS_BEAT_MS,
+  TV_PROFILE,
   parseSenderMessage,
   type ReceiverMessage,
   type SenderMessage,
@@ -19,7 +21,12 @@ import { buildAudioGraph, type AudioGraph } from "@/lib/audio-graph";
 import { loadStreamInto } from "@/lib/stream-load";
 import { LEVELER, dbToLinear } from "@/lib/loudness";
 import type { QueueTrack } from "@/lib/queue";
+import type { StageMode } from "@/lib/stage";
+import { SCENE_META } from "@/lib/viz/scene";
+import { resolveDsp, resolveSceneSettings } from "@/lib/viz/settings";
 import { artworkSized, loadArtworkImage } from "@/lib/artwork";
+import { SceneHost } from "@/components/viz/SceneHost";
+import { createScene } from "@/components/viz/scenes";
 import { useVizTheme } from "@/components/viz/useVizTheme";
 import { IconCloud } from "@/components/ui/icons";
 
@@ -117,6 +124,8 @@ function ReceiverArt({
 export function ReceiverApp() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const graphRef = useRef<AudioGraph | null>(null);
+  /** RefObject view of the graph's analyser for SceneHost. */
+  const analyserRef = useRef<AnalyserNode | null>(null);
   const hlsRef = useRef<Hls | null>(null);
   const trackIdRef = useRef<number | null>(null);
   const bufferingRef = useRef(false);
@@ -125,6 +134,9 @@ export function ReceiverApp() {
   const [mode, setMode] = useState<Mode>("boot");
   const [track, setTrack] = useState<QueueTrack | null>(null);
   const [playing, setPlaying] = useState(false);
+  /** TV stage mode, driven by the sender's scene messages. */
+  const [tvMode, setTvMode] = useState<StageMode>("bars");
+  const [upNext, setUpNext] = useState<QueueTrack[]>([]);
   const [debugStarted, setDebugStarted] = useState(false);
   const [debugLog, setDebugLog] = useState<string[]>([]);
   /** First fatal error, rendered on screen — a TV has no console, and
@@ -146,6 +158,23 @@ export function ReceiverApp() {
   }, []);
 
   const theme = useVizTheme(track?.artworkUrl ?? null);
+
+  // Scene under the TV profile: house-default tuning, thinner spectrum,
+  // capped frame rate, DPR pinned to 1 (SceneHost knobs). The piano
+  // keeps its key count — bars there are semitone-aligned.
+  const scene = useMemo(
+    () => (tvMode === "art" ? null : createScene(tvMode)),
+    [tvMode],
+  );
+  const dsp = useMemo(() => {
+    if (tvMode === "art") return undefined;
+    const d = resolveDsp(tvMode, null);
+    return tvMode === "piano" ? d : { ...d, barCount: TV_PROFILE.barCount };
+  }, [tvMode]);
+  const visual = useMemo(
+    () => (tvMode === "art" ? undefined : resolveSceneSettings(tvMode, null)),
+    [tvMode],
+  );
 
   const sendToSender = useCallback((msg: ReceiverMessage) => {
     sendRef.current(msg);
@@ -179,7 +208,10 @@ export function ReceiverApp() {
           // Chromecast has no autoplay gate, so the graph can be born on
           // the first load; the debug harness builds it on its start
           // gesture instead.
-          if (!graphRef.current) graphRef.current = buildAudioGraph(el);
+          if (!graphRef.current) {
+            graphRef.current = buildAudioGraph(el);
+            analyserRef.current = graphRef.current.analyser;
+          }
           const g = graphRef.current;
           void g.ctx.resume();
           // The sender's cached loudness rides the load message — this
@@ -246,6 +278,13 @@ export function ReceiverApp() {
           bufferingRef.current = false;
           setTrack(null);
           setPlaying(false);
+          setUpNext([]);
+          return;
+        case "scene":
+          setTvMode(msg.mode);
+          return;
+        case "upnext":
+          setUpNext(msg.tracks);
           return;
       }
     },
@@ -259,9 +298,24 @@ export function ReceiverApp() {
   useEffect(() => {
     stage("boot:react");
     // The page's inline script runs before the probe divs are parsed —
-    // paint the UA here instead, where the DOM is complete.
+    // paint the UA (plus a CSS capability readout: the runtime masks its
+    // Chrome version, and the day these flip to y the /cast surface can
+    // go back to Tailwind) here instead, where the DOM is complete.
     const ua = document.getElementById("cast-ua-probe");
-    if (ua) ua.textContent = navigator.userAgent;
+    if (ua) {
+      const sup = (prop: string, val: string) => {
+        try {
+          return CSS.supports(prop, val) ? "y" : "n";
+        } catch {
+          return "n";
+        }
+      };
+      const css = `oklch:${sup("color", "oklch(50% 0.1 200)")} mix:${sup(
+        "color",
+        "color-mix(in oklab, red, blue)",
+      )} layer:${"CSSLayerBlockRule" in window ? "y" : "n"}`;
+      ua.textContent = `${navigator.userAgent} · ${css}`;
+    }
     if (new URLSearchParams(window.location.search).has("debug")) {
       setMode("debug");
       stage("debug");
@@ -429,63 +483,104 @@ export function ReceiverApp() {
         fontFamily: "var(--font-comfortaa), system-ui, sans-serif",
       }}
     >
-      {/* blurred-art fill, StageView's art-mode backdrop */}
+      {/* blurred-art fill, StageView's art-mode backdrop (dimmer under
+          scenes so they keep contrast) */}
       <div style={{ ...fill, overflow: "hidden" }}>
         <ReceiverArt
           url={track?.artworkUrl ?? null}
           style={{
             transform: "scale(1.25)",
-            filter: "blur(64px) saturate(1.25) brightness(0.55)",
+            filter: `blur(64px) saturate(1.25) brightness(${
+              track && scene ? 0.35 : 0.55
+            })`,
           }}
         />
       </div>
+      {track && scene && (
+        <div style={{ ...fill, background: "rgba(0,0,0,0.4)" }} />
+      )}
 
       {track ? (
         <>
-          <div
-            style={{
-              ...fill,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              paddingTop: 56,
-              paddingBottom: 96,
-            }}
-          >
+          {scene ? (
             <div
               style={{
-                position: "relative",
-                width: "58vmin",
-                height: "58vmin",
-                overflow: "hidden",
-                borderRadius: 12,
-                boxShadow: "0 24px 60px rgba(0,0,0,0.5)",
-                background: "rgba(255,255,255,0.05)",
+                ...fill,
+                display: "flex",
+                justifyContent: "center",
+                paddingTop: 24,
+                paddingLeft: 32,
+                paddingRight: 32,
+                paddingBottom: 110,
               }}
             >
-              {track.artworkUrl ? (
-                <ReceiverArt url={track.artworkUrl} />
-              ) : (
-                <div
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: muted,
-                  }}
-                >
-                  <IconCloud size={96} />
-                </div>
-              )}
+              <div
+                style={{
+                  height: "100%",
+                  width: "100%",
+                  maxWidth: SCENE_META.find((s) => s.id === tvMode)?.maxWidth,
+                }}
+              >
+                <SceneHost
+                  scene={scene}
+                  theme={theme}
+                  analyserRef={analyserRef}
+                  playing={playing}
+                  getPositionSec={() => audioRef.current?.currentTime ?? 0}
+                  dsp={dsp}
+                  visual={visual}
+                  maxFps={TV_PROFILE.maxFps}
+                  fixedDpr={TV_PROFILE.dpr}
+                  style={{ height: "100%", width: "100%" }}
+                />
+              </div>
             </div>
-          </div>
+          ) : (
+            <div
+              style={{
+                ...fill,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                paddingTop: 56,
+                paddingBottom: 96,
+              }}
+            >
+              <div
+                style={{
+                  position: "relative",
+                  width: "58vmin",
+                  height: "58vmin",
+                  overflow: "hidden",
+                  borderRadius: 12,
+                  boxShadow: "0 24px 60px rgba(0,0,0,0.5)",
+                  background: "rgba(255,255,255,0.05)",
+                }}
+              >
+                {track.artworkUrl ? (
+                  <ReceiverArt url={track.artworkUrl} />
+                ) : (
+                  <div
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: muted,
+                    }}
+                  >
+                    <IconCloud size={96} />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           <div style={{ position: "absolute", left: 40, bottom: 36 }}>
             <p
               style={{
                 margin: 0,
-                maxWidth: "70vw",
+                maxWidth: "55vw",
                 overflow: "hidden",
                 whiteSpace: "nowrap",
                 textOverflow: "ellipsis",
@@ -500,20 +595,42 @@ export function ReceiverApp() {
               {track.artist} · on SoundCloud
             </p>
           </div>
-          {!playing && (
-            <p
-              style={{
-                position: "absolute",
-                right: 40,
-                bottom: 36,
-                margin: 0,
-                fontSize: 18,
-                color: muted,
-              }}
-            >
-              paused
-            </p>
-          )}
+          <div
+            style={{
+              position: "absolute",
+              right: 40,
+              bottom: 36,
+              maxWidth: "38vw",
+              textAlign: "right",
+              color: muted,
+              textShadow: "0 1px 10px rgba(0,0,0,0.85)",
+            }}
+          >
+            {!playing && (
+              <p style={{ margin: "0 0 8px", fontSize: 18 }}>paused</p>
+            )}
+            {upNext.length > 0 && (
+              <>
+                <p style={{ margin: 0, fontSize: 12, opacity: 0.75 }}>
+                  up next
+                </p>
+                {upNext.map((t) => (
+                  <p
+                    key={t.id}
+                    style={{
+                      margin: "2px 0 0",
+                      overflow: "hidden",
+                      whiteSpace: "nowrap",
+                      textOverflow: "ellipsis",
+                      fontSize: 14,
+                    }}
+                  >
+                    {t.title} · {t.artist}
+                  </p>
+                ))}
+              </>
+            )}
+          </div>
         </>
       ) : (
         <div
@@ -613,7 +730,10 @@ export function ReceiverApp() {
               // The user gesture the browser's autoplay policy wants —
               // build the graph here (a TV needs no such gate).
               const el = audioRef.current;
-              if (el && !graphRef.current) graphRef.current = buildAudioGraph(el);
+              if (el && !graphRef.current) {
+                graphRef.current = buildAudioGraph(el);
+                analyserRef.current = graphRef.current.analyser;
+              }
               setDebugStarted(true);
             }}
             style={{

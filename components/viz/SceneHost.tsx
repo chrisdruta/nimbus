@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { usePlayerRefs, usePlayerState } from "@/components/player/PlayerProvider";
+import { useEffect, useRef, type CSSProperties, type RefObject } from "react";
 import { FrameAnalyzer } from "@/lib/viz/analyzer";
 import type { Scene, SceneContext, VizTheme } from "@/lib/viz/scene";
 import type { ResolvedDsp, SceneVisualSettings } from "@/lib/viz/settings";
@@ -13,25 +12,42 @@ const FULL_BAR_COUNT = 64;
  * Owns the fullscreen canvas and rAF loop; drives whichever Scene is
  * active. The FrameAnalyzer persists across scene swaps so DSP state
  * (gravity, sensitivity) doesn't re-ramp when the user switches scenes.
+ *
+ * Deliberately decoupled from the player contexts: the stage passes the
+ * player's analyser/playhead, the cast receiver passes its own — same
+ * scenes, either audio graph.
  */
 export function SceneHost({
   scene,
   theme,
+  analyserRef,
+  playing,
+  getPositionSec,
   dsp,
   visual,
   trackShape,
+  maxFps,
+  fixedDpr,
   className = "",
+  style,
 }: {
   scene: Scene;
   theme: VizTheme;
+  analyserRef: RefObject<AnalyserNode | null>;
+  playing: boolean;
+  /** Playhead of the driving audio source (seconds), read per frame. */
+  getPositionSec: () => number;
   dsp?: ResolvedDsp;
   visual?: SceneVisualSettings;
   /** Whole-track lookahead shape for the current track (null while loading). */
   trackShape?: { shape: TrackShape | null; durationMs: number };
+  /** TV profile: cap the frame rate (old Chromecast CPUs). */
+  maxFps?: number;
+  /** TV profile: pin DPR (1080p panels upscale fine at half the pixels). */
+  fixedDpr?: number;
   className?: string;
+  style?: CSSProperties;
 }) {
-  const { analyserRef, audioRef } = usePlayerRefs();
-  const { playing } = usePlayerState();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyzerRef = useRef<FrameAnalyzer | null>(null);
   const sceneRef = useRef(scene);
@@ -40,11 +56,15 @@ export function SceneHost({
   const visualRef = useRef(visual);
   const dspRef = useRef(dsp);
   const trackShapeRef = useRef(trackShape);
+  const getPositionSecRef = useRef(getPositionSec);
+  const maxFpsRef = useRef(maxFps);
   themeRef.current = theme;
   playingRef.current = playing;
   visualRef.current = visual;
   dspRef.current = dsp;
   trackShapeRef.current = trackShape;
+  getPositionSecRef.current = getPositionSec;
+  maxFpsRef.current = maxFps;
 
   // Settings flow into the persistent analyzer; it rebuilds internally
   // only when a structural value actually changed. (First application
@@ -100,7 +120,7 @@ export function SceneHost({
 
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = fixedDpr ?? (window.devicePixelRatio || 1);
       canvas.width = Math.max(1, Math.round(rect.width * dpr));
       canvas.height = Math.max(1, Math.round(rect.height * dpr));
       sc.width = canvas.width;
@@ -125,9 +145,11 @@ export function SceneHost({
       raf = requestAnimationFrame(draw);
 
       // Frame-skip throttles: ~15 fps under reduced motion, ~4 fps when
-      // paused and the bars have settled (energy ≈ 0).
+      // paused and the bars have settled (energy ≈ 0), and the caller's
+      // cap (TV profile) whenever it's tighter.
       const idle = idleFrames > 90;
-      const interval = reducedMotion ? 66 : idle ? 250 : 0;
+      const cap = maxFpsRef.current ? 1000 / maxFpsRef.current : 0;
+      const interval = Math.max(reducedMotion ? 66 : idle ? 250 : 0, cap);
       if (interval > 0 && nowMs - lastDraw < interval) return;
       lastDraw = nowMs;
 
@@ -146,7 +168,7 @@ export function SceneHost({
       sc.track = ts
         ? {
             shape: ts.shape,
-            positionSec: audioRef.current?.currentTime ?? 0,
+            positionSec: getPositionSecRef.current(),
             durationSec: ts.durationMs / 1000,
           }
         : undefined;
@@ -165,7 +187,7 @@ export function SceneHost({
       observer.disconnect();
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [analyserRef, audioRef]);
+  }, [analyserRef, fixedDpr]);
 
-  return <canvas ref={canvasRef} className={className} />;
+  return <canvas ref={canvasRef} className={className} style={style} />;
 }

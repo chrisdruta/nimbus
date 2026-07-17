@@ -31,7 +31,11 @@ import {
   IconX,
 } from "@/components/ui/icons";
 import { readPref, writePref } from "@/lib/prefs";
-import { usePlayerActions, usePlayerState } from "@/components/player/PlayerProvider";
+import {
+  usePlayerActions,
+  usePlayerRefs,
+  usePlayerState,
+} from "@/components/player/PlayerProvider";
 
 const CHROME_HIDE_MS = 2500;
 
@@ -42,13 +46,23 @@ const CHROME_HIDE_MS = 2500;
  * Scenes paint on transparency; this owns the backdrop layers beneath.
  */
 export function StageView() {
-  const { stageOpen, current, cast } = usePlayerState();
+  const { stageOpen, current, cast, playing } = usePlayerState();
   const actions = usePlayerActions();
+  const { analyserRef, positionMsNow } = usePlayerRefs();
   const theme = useVizTheme(current?.artworkUrl ?? null);
   // While casting the local analyser is silent — scenes would just paint
   // stillness. The stage falls back to art mode with a quiet caption;
-  // the receiver renders the show on the TV instead.
+  // the receiver renders the show on the TV, and the corner picker
+  // drives the TV's scene over the cast channel instead of the local one.
   const casting = cast?.status === "connected";
+  const [tvMode, setTvMode] = useState<StageMode>("bars");
+  const tvSelect = useCallback(
+    (id: StageMode) => {
+      setTvMode(id);
+      actions.setCastScene(id);
+    },
+    [actions],
+  );
 
   const [mode, setMode] = useState<StageMode>(
     () =>
@@ -210,15 +224,18 @@ export function StageView() {
         return;
       }
       if (e.key === "ArrowRight") {
-        selectMode(cycleStageMode(mode, 1));
+        if (casting) tvSelect(cycleStageMode(tvMode, 1));
+        else selectMode(cycleStageMode(mode, 1));
         pokeChrome();
       } else if (e.key === "ArrowLeft") {
-        selectMode(cycleStageMode(mode, -1));
+        if (casting) tvSelect(cycleStageMode(tvMode, -1));
+        else selectMode(cycleStageMode(mode, -1));
         pokeChrome();
       } else if (/^[1-6]$/.test(e.key)) {
         const meta = STAGE_META[Number(e.key) - 1];
         if (meta) {
-          selectMode(meta.id);
+          if (casting) tvSelect(meta.id);
+          else selectMode(meta.id);
           pokeChrome();
         }
       }
@@ -228,7 +245,7 @@ export function StageView() {
       window.removeEventListener("keydown", onKey);
       if (hideTimer.current) clearTimeout(hideTimer.current);
     };
-  }, [stageOpen, mode, actions, selectMode, pokeChrome]);
+  }, [stageOpen, mode, actions, selectMode, pokeChrome, casting, tvMode, tvSelect]);
 
   if (!stageOpen) return null;
 
@@ -308,6 +325,9 @@ export function StageView() {
               <SceneHost
                 scene={scene}
                 theme={theme}
+                analyserRef={analyserRef}
+                playing={playing}
+                getPositionSec={() => positionMsNow() / 1000}
                 dsp={dsp}
                 visual={visual}
                 trackShape={
@@ -404,12 +424,14 @@ export function StageView() {
         </div>
       )}
 
-      {/* mode switching lives in the bottom-left corner */}
-      {!casting && (
-        <div className={`absolute bottom-6 left-6 ${chromeDrift}`}>
-          <ScenePicker active={mode} onSelect={selectMode} />
-        </div>
-      )}
+      {/* mode switching lives in the bottom-left corner; while casting
+          it drives the TV's scene instead of the (silent) local one */}
+      <div className={`absolute bottom-6 left-6 ${chromeDrift}`}>
+        <ScenePicker
+          active={casting ? tvMode : mode}
+          onSelect={casting ? tvSelect : selectMode}
+        />
+      </div>
 
       {!casting && (
         <button

@@ -10,6 +10,7 @@
 
 import type { QueueTrack } from "./queue";
 import { parseQueueTracks } from "./slipstream";
+import { isStageMode, type StageMode } from "./stage";
 
 /** Custom message channel both sides speak (type-discriminated JSON). */
 export const CAST_NAMESPACE = "urn:x-cast:com.nimbus.cast";
@@ -30,6 +31,10 @@ export const TV_PROFILE = {
 
 export type CastProtocol = "progressive" | "hls" | "unknown";
 
+/** Up-next entries shipped to the TV (display only — the queue brain
+ * stays on the sender). */
+export const UPNEXT_MAX = 5;
+
 /** Sender → receiver. `load` replaces whatever is playing; transport
  * messages apply to the loaded track and are otherwise ignored. */
 export type SenderMessage =
@@ -47,7 +52,11 @@ export type SenderMessage =
   | { type: "play" }
   | { type: "pause" }
   | { type: "seek"; ms: number }
-  | { type: "stop" };
+  | { type: "stop" }
+  /** Switch the TV's stage mode ("art" or a viz scene). */
+  | { type: "scene"; mode: StageMode }
+  /** Replace the TV's up-next strip (empty clears it). */
+  | { type: "upnext"; tracks: QueueTrack[] };
 
 /** Receiver → sender. `status` beats every STATUS_BEAT_MS and on every
  * transition; `ended`/`error` hand control back to the sender's queue. */
@@ -139,6 +148,14 @@ export function parseSenderMessage(v: unknown): SenderMessage | null {
     case "seek":
       if (!isPositionMs(m.ms)) return null;
       return { type: "seek", ms: Math.floor(m.ms) };
+    case "scene":
+      if (!isStageMode(m.mode)) return null;
+      return { type: "scene", mode: m.mode };
+    case "upnext": {
+      const tracks = parseQueueTracks(m.tracks, UPNEXT_MAX);
+      if (tracks === null) return null;
+      return { type: "upnext", tracks };
+    }
     default:
       return null;
   }

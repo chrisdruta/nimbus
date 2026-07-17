@@ -110,8 +110,45 @@ describe("parseSenderMessage", () => {
     expect(parseSenderMessage({ type: "seek", ms: -1 })).toBeNull();
   });
 
+  test("scene messages validate against stage modes", () => {
+    expect(parseSenderMessage({ type: "scene", mode: "bars" })).toEqual({
+      type: "scene",
+      mode: "bars",
+    });
+    expect(parseSenderMessage({ type: "scene", mode: "art" })).toEqual({
+      type: "scene",
+      mode: "art",
+    });
+    expect(parseSenderMessage({ type: "scene", mode: "disco" })).toBeNull();
+    expect(parseSenderMessage({ type: "scene" })).toBeNull();
+  });
+
+  test("upnext validates and strips its track list", () => {
+    const m = parseSenderMessage({
+      type: "upnext",
+      tracks: [{ ...track, evil: "x" }],
+    });
+    if (m?.type !== "upnext") throw new Error("expected upnext");
+    expect(m.tracks).toHaveLength(1);
+    expect("evil" in m.tracks[0]).toBe(false);
+    expect(parseSenderMessage({ type: "upnext", tracks: [] })).toEqual({
+      type: "upnext",
+      tracks: [],
+    });
+    expect(
+      parseSenderMessage({ type: "upnext", tracks: Array(6).fill(track) }),
+    ).toBeNull();
+    expect(
+      parseSenderMessage({
+        type: "upnext",
+        tracks: [{ ...track, permalinkUrl: "https://evil.com/x" }],
+      }),
+    ).toBeNull();
+    expect(parseSenderMessage({ type: "upnext" })).toBeNull();
+  });
+
   test("unknown types and non-objects are null", () => {
-    expect(parseSenderMessage({ type: "scene", mode: "bars" })).toBeNull();
+    expect(parseSenderMessage({ type: "boop" })).toBeNull();
     expect(parseSenderMessage(null)).toBeNull();
     expect(parseSenderMessage("load")).toBeNull();
     expect(parseSenderMessage(undefined)).toBeNull();

@@ -17,11 +17,13 @@ import { formatReset } from "@/lib/format";
 import { buildAudioGraph, LIMITER_THRESHOLD_DB } from "@/lib/audio-graph";
 import { loadStreamInto } from "@/lib/stream-load";
 import {
+  UPNEXT_MAX,
   canStartCasting,
   castPositionMs,
   shouldReresolve,
   type CastPlayhead,
 } from "@/lib/cast";
+import type { StageMode } from "@/lib/stage";
 import {
   useCastSender,
   type CastSender,
@@ -276,6 +278,8 @@ export interface PlayerActions {
   startCasting(): void;
   /** End the cast session (playback parks locally at the TV's position). */
   stopCasting(): void;
+  /** Switch the TV's stage mode ("art" or a viz scene). */
+  setCastScene(mode: StageMode): void;
   /** Seek the active output — local element or cast receiver. */
   seekTo(ms: number): void;
 }
@@ -311,6 +315,21 @@ export function usePlayerRefs(): PlayerRefs {
 }
 
 function toQueueTrack(t: ProviderTrack): QueueTrack {
+  return {
+    id: t.id,
+    title: t.title,
+    artist: t.artist,
+    ...(t.artistId === undefined ? {} : { artistId: t.artistId }),
+    artistUrl: t.artistUrl,
+    artworkUrl: t.artworkUrl,
+    permalinkUrl: t.permalinkUrl,
+    durationMs: t.durationMs,
+    ...(t.preview === true ? { preview: true } : {}),
+  };
+}
+
+/** Strip to the wire QueueTrack shape — caches may hold richer objects. */
+function wireTrack(t: QueueTrack): QueueTrack {
   return {
     id: t.id,
     title: t.title,
@@ -1023,18 +1042,7 @@ export function PlayerProvider({
         protocol: stream.protocol,
         positionMs: Math.max(0, Math.floor(atMs)),
         gainDb: loudness !== undefined ? gainDbFor(loudness) : 0,
-        // Strip to the wire shape — the cache may hold richer objects.
-        track: {
-          id: meta.id,
-          title: meta.title,
-          artist: meta.artist,
-          ...(meta.artistId === undefined ? {} : { artistId: meta.artistId }),
-          artistUrl: meta.artistUrl,
-          artworkUrl: meta.artworkUrl,
-          permalinkUrl: meta.permalinkUrl,
-          durationMs: meta.durationMs,
-          ...(meta.preview === true ? { preview: true } : {}),
-        },
+        track: wireTrack(meta),
       });
       setPlaying(true);
     },
@@ -2195,6 +2203,10 @@ export function PlayerProvider({
         castSenderRef.current?.stop();
       },
 
+      setCastScene(mode) {
+        castSenderRef.current?.send({ type: "scene", mode });
+      },
+
       seekTo(ms) {
         const c = castRef.current;
         if (c) {
@@ -2288,6 +2300,21 @@ export function PlayerProvider({
     if (id === null) return "";
     return [id, ...upcoming(queue, WINDOW_SIZE - 1)].join(",");
   }, [queue]);
+
+  // Up-next strip on the TV — display only, refreshed whenever the
+  // queue's window changes while casting (connect included).
+  useEffect(() => {
+    if (castSender.status !== "connected" || !castRef.current) return;
+    const q = queueRef.current;
+    if (!q) return;
+    castSenderRef.current?.send({
+      type: "upnext",
+      tracks: upcoming(q, UPNEXT_MAX)
+        .map((id) => metaRef.current.get(id))
+        .filter((t): t is QueueTrack => t !== undefined)
+        .map(wireTrack),
+    });
+  }, [windowKey, castSender.status]);
 
   const buildBeat = useCallback((): PublishedBeat | null => {
     const q = queueRef.current;
