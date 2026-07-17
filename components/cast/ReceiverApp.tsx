@@ -48,6 +48,23 @@ export function ReceiverApp() {
   const [playing, setPlaying] = useState(false);
   const [debugStarted, setDebugStarted] = useState(false);
   const [debugLog, setDebugLog] = useState<string[]>([]);
+  /** First fatal error, rendered on screen — a TV has no console, and
+   * the platform kills an app whose start() never ran, so this is the
+   * only reliable way to see why. */
+  const [fatal, setFatal] = useState<string | null>(null);
+
+  useEffect(() => {
+    const onError = (e: ErrorEvent) =>
+      setFatal((f) => f ?? `${e.message} @ ${e.filename ?? "?"}:${e.lineno ?? 0}`);
+    const onRejection = (e: PromiseRejectionEvent) =>
+      setFatal((f) => f ?? `unhandled rejection: ${String(e.reason)}`);
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onRejection);
+    return () => {
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onRejection);
+    };
+  }, []);
 
   const theme = useVizTheme(track?.artworkUrl ?? null);
 
@@ -170,11 +187,33 @@ export function ReceiverApp() {
     const script = document.createElement("script");
     script.src = RECEIVER_SDK_URL;
     script.onload = () => {
+      try {
+        initCast();
+      } catch (err) {
+        setFatal((f) => f ?? `init: ${String(err)}`);
+        setMode("cast-failed");
+      }
+    };
+    const initCast = () => {
       const cf = (window as { cast?: typeof cast }).cast?.framework;
       if (!cf) {
         setMode("cast-failed");
         return;
       }
+      // Defensive constant lookups: this branch only ever runs on real
+      // hardware (desktop uses the debug stub), and a missing namespace
+      // must not throw before ctx.start() — the platform kills any app
+      // whose start never completes.
+      const sys = (
+        cf as unknown as {
+          system?: {
+            EventType?: Record<string, string>;
+            MessageType?: Record<string, string>;
+          };
+        }
+      ).system;
+      const senderConnected = sys?.EventType?.SENDER_CONNECTED ?? "senderconnected";
+      const jsonType = sys?.MessageType?.JSON ?? "JSON";
       const ctx = cf.CastReceiverContext.getInstance();
       ctx.addCustomMessageListener(CAST_NAMESPACE, (event) => {
         // Tolerate a string payload — depends on how the platform honors
@@ -209,21 +248,29 @@ export function ReceiverApp() {
       // races the channel handshake and gets dropped — announce it to
       // each sender as it actually connects instead (this also covers a
       // second sender joining later).
-      ctx.addEventListener(cf.system.EventType.SENDER_CONNECTED, (event) => {
-        console.log("[nimbus-cast] sender connected", event.senderId);
-        sendRef.current({ type: "ready" });
-      });
+      try {
+        ctx.addEventListener(senderConnected, (event) => {
+          console.log("[nimbus-cast] sender connected", event.senderId);
+          sendRef.current({ type: "ready" });
+        });
+      } catch (err) {
+        // Lose the re-announce, keep the app alive (3s sender fallback).
+        console.warn("[nimbus-cast] sender-connected listener failed", err);
+      }
       ctx.start({
         // No PlayerManager LOAD ever happens on this channel — without
         // this, CAF's media-idle reaper would kill the app mid-track.
         // (The app still closes when the last sender disconnects.)
         disableIdleTimeout: true,
-        customNamespaces: { [CAST_NAMESPACE]: cf.system.MessageType.JSON },
+        customNamespaces: { [CAST_NAMESPACE]: jsonType },
       });
       console.log("[nimbus-cast] receiver started", CAST_NAMESPACE);
       setMode("cast");
     };
-    script.onerror = () => setMode("cast-failed");
+    script.onerror = () => {
+      setFatal((f) => f ?? "cast sdk script failed to load");
+      setMode("cast-failed");
+    };
     document.head.appendChild(script);
   }, []);
 
@@ -332,6 +379,12 @@ export function ReceiverApp() {
             {mode === "cast-failed" ? "cast sdk failed to load" : "ready to cast"}
           </p>
         </div>
+      )}
+
+      {fatal && (
+        <p className="absolute inset-x-8 top-6 z-20 text-center font-mono text-sm text-red-400 [text-shadow:0_1px_8px_rgba(0,0,0,0.9)]">
+          {fatal}
+        </p>
       )}
 
       <audio
