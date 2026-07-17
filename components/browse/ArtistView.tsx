@@ -186,11 +186,11 @@ export function ArtistView({ artistId }: { artistId: number }) {
             <img
               src={avatar}
               alt=""
-              className="h-24 w-24 rounded-full object-cover shadow-xl"
+              className="h-14 w-14 rounded-full object-cover shadow-xl 2xl:h-16 2xl:w-16"
             />
           ) : (
-            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-elem/40 text-muted shadow-xl">
-              <IconCloud size={32} />
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-elem/40 text-muted shadow-xl 2xl:h-16 2xl:w-16">
+              <IconCloud size={22} />
             </div>
           )}
           <div className="min-w-0 flex-1 basis-52">
