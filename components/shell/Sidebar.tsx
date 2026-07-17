@@ -74,7 +74,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             >
               {me.username}
             </a>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-x-3">
               <form action="/api/auth/logout" method="post">
                 <button className="cursor-pointer text-xs text-muted transition hover:text-accent">
                   disconnect
@@ -83,7 +83,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
               <button
                 onClick={() => void erase()}
                 title="clear this device's queue, library cache, and preferences"
-                className="cursor-pointer text-xs text-muted transition hover:text-accent"
+                className="cursor-pointer text-xs whitespace-nowrap text-muted transition hover:text-accent"
               >
                 {erased ? "cleared" : "erase local data"}
               </button>

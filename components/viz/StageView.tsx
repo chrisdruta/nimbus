@@ -262,9 +262,11 @@ export function StageView() {
       {mode !== "art" && <div className="absolute inset-0 bg-black/40" />}
 
       {mode === "art" ? (
-        <div className="absolute inset-0 flex items-center justify-center">
+        // Chrome clearance is asymmetric: the title block needs ~96px up
+        // top, the mode label ~56px below. The art centers in what's left.
+        <div className="absolute inset-0 flex items-center justify-center pt-24 pb-14">
           <div
-            className={`relative aspect-square h-[min(70vmin,calc(100%-8rem))] overflow-hidden rounded-xl shadow-2xl ${
+            className={`relative aspect-square h-[min(70vmin,100%)] overflow-hidden rounded-xl shadow-2xl ${
               (visual as ArtSettings).breathe
                 ? "motion-safe:animate-[stage-breathe_14s_ease-in-out_infinite_alternate]"
                 : ""
