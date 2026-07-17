@@ -122,7 +122,9 @@ export function ReceiverApp() {
             if (trackIdRef.current !== msg.trackId) return; // superseded
             if (msg.positionMs > 1_000) el.currentTime = msg.positionMs / 1000;
             await el.play();
-          } catch {
+            console.log("[nimbus-cast] playing", msg.trackId);
+          } catch (err) {
+            console.warn("[nimbus-cast] load failed", msg.trackId, err);
             if (trackIdRef.current === msg.trackId) {
               sendToSender({ type: "error", trackId: msg.trackId, code: "load" });
             }
@@ -175,21 +177,40 @@ export function ReceiverApp() {
       }
       const ctx = cf.CastReceiverContext.getInstance();
       ctx.addCustomMessageListener(CAST_NAMESPACE, (event) => {
-        const msg = parseSenderMessage(event.data);
-        if (msg) void handleMessageRef.current(msg);
+        // Tolerate a string payload — depends on how the platform honors
+        // the JSON namespace registration.
+        let data = event.data;
+        if (typeof data === "string") {
+          try {
+            data = JSON.parse(data);
+          } catch {
+            console.warn("[nimbus-cast] unparseable message", event.data);
+            return;
+          }
+        }
+        const msg = parseSenderMessage(data);
+        // Breadcrumbs for chrome://inspect debugging on real hardware.
+        if (msg) {
+          console.log("[nimbus-cast] recv", msg.type);
+          void handleMessageRef.current(msg);
+        } else {
+          console.warn("[nimbus-cast] rejected message", data);
+        }
       });
       sendRef.current = (msg) => {
         try {
           ctx.sendCustomMessage(CAST_NAMESPACE, undefined, msg);
-        } catch {
-          // channel not up yet — beats self-correct
+          if (msg.type !== "status") console.log("[nimbus-cast] sent", msg.type);
+        } catch (err) {
+          console.warn("[nimbus-cast] send failed", msg.type, err);
         }
       };
       // `ready` gates the sender's handoff, and a broadcast during boot
       // races the channel handshake and gets dropped — announce it to
       // each sender as it actually connects instead (this also covers a
       // second sender joining later).
-      ctx.addEventListener(cf.system.EventType.SENDER_CONNECTED, () => {
+      ctx.addEventListener(cf.system.EventType.SENDER_CONNECTED, (event) => {
+        console.log("[nimbus-cast] sender connected", event.senderId);
         sendRef.current({ type: "ready" });
       });
       ctx.start({
@@ -199,6 +220,7 @@ export function ReceiverApp() {
         disableIdleTimeout: true,
         customNamespaces: { [CAST_NAMESPACE]: cf.system.MessageType.JSON },
       });
+      console.log("[nimbus-cast] receiver started", CAST_NAMESPACE);
       setMode("cast");
     };
     script.onerror = () => setMode("cast-failed");

@@ -90,6 +90,8 @@ export function useCastSender(cb: CastSenderCallbacks): CastSender {
         return;
       }
       const msg = parseReceiverMessage(data);
+      // debug-level: visible with the console's Verbose filter on
+      if (msg?.type !== "status") console.debug("[nimbus-cast] recv", data);
       if (msg && !disposed) cbRef.current.onMessage(msg);
     };
 
@@ -216,8 +218,13 @@ export function useCastSender(cb: CastSenderCallbacks): CastSender {
     const session = getCast()
       ?.framework.CastContext.getInstance()
       .getCurrentSession();
-    void session?.sendMessage(CAST_NAMESPACE, msg).catch(() => {
-      // channel hiccup — status beats self-correct
+    if (!session) {
+      console.debug("[nimbus-cast] send with no session", msg.type);
+      return;
+    }
+    console.debug("[nimbus-cast] send", msg.type);
+    void session.sendMessage(CAST_NAMESPACE, msg).catch((err: unknown) => {
+      console.debug("[nimbus-cast] send failed", msg.type, err);
     });
   }, []);
 
